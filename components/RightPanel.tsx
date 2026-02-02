@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Activity, FileText, Loader2, Settings } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface RightPanelProps {
   token?: string;
@@ -73,23 +73,9 @@ const RightPanel: React.FC<RightPanelProps> = ({ token }) => {
         <h3 className="text-2xl font-black mt-8 text-white tracking-tight leading-tight">{profile.name}</h3>
         <p className="text-purple-500 text-[10px] font-black mt-2 uppercase tracking-[0.3em]">{profile.role}</p>
         
-        <div className="grid grid-cols-2 gap-4 mt-12 w-full">
-          <button className="flex flex-col items-center gap-3 p-6 bg-white/5 rounded-3xl border border-white/5 hover:bg-white/10 transition-all group">
-            <User size={20} className="text-gray-500 group-hover:text-purple-500" />
-            <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest group-hover:text-white">Perfil</span>
-          </button>
-          <button className="flex flex-col items-center gap-3 p-6 bg-white/5 rounded-3xl border border-white/5 hover:bg-white/10 transition-all group">
-            <Activity size={20} className="text-gray-500 group-hover:text-green-500" />
-            <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest group-hover:text-white">Actividad</span>
-          </button>
-          <button className="flex flex-col items-center gap-3 p-6 bg-white/5 rounded-3xl border border-white/5 hover:bg-white/10 transition-all group">
-            <FileText size={20} className="text-gray-500 group-hover:text-blue-500" />
-            <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest group-hover:text-white">Docs</span>
-          </button>
-          <button className="flex flex-col items-center gap-3 p-6 bg-white/5 rounded-3xl border border-white/5 hover:bg-white/10 transition-all group">
-            <Settings size={20} className="text-gray-500 group-hover:text-purple-500" />
-            <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest group-hover:text-white">Ajustes</span>
-          </button>
+        <div className="mt-12 w-full p-6 bg-white/5 rounded-[2rem] border border-white/5 text-center italic">
+           <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">Resumen de Cuenta</p>
+           <p className="text-xs text-gray-400 mt-2 leading-relaxed">Panel de control optimizado para visualización de activos de Meta Business Suite.</p>
         </div>
       </div>
 
