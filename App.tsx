@@ -7,6 +7,7 @@ import CampaignsPanel from './components/CampaignsPanel.tsx';
 import ReportsCenter from './components/ReportsCenter.tsx';
 import CustomerInsights from './components/CustomerInsights.tsx';
 import CargarPanel from './components/CargarPanel.tsx';
+import ExcelImportPanel from './components/ExcelImportPanel.tsx';
 import LoginGate from './components/LoginGate.tsx';
 import { ShieldCheck, AlertCircle, Lock } from 'lucide-react';
 
@@ -45,10 +46,6 @@ const App: React.FC = () => {
     window.location.reload();
   };
 
-  if (!isAuthenticated) {
-    return <LoginGate onLoginSuccess={handleLoginSuccess} />;
-  }
-
   const renderContent = () => {
     switch (activeTab) {
       case 'Informe':
@@ -57,6 +54,8 @@ const App: React.FC = () => {
         return <CustomerInsights userRole={userRole} />;
       case 'Cargar':
         return userRole === 'admin' ? <CargarPanel /> : <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
+      case 'Importar':
+        return <ExcelImportPanel />;
       case 'Campañas':
         return <CampaignsPanel token={metaToken} />;
       case 'Reportes':
@@ -65,6 +64,10 @@ const App: React.FC = () => {
         return <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
     }
   };
+
+  if (!isAuthenticated) {
+    return <LoginGate onLoginSuccess={handleLoginSuccess} />;
+  }
 
   return (
     <div className={`flex min-h-screen ${isDarkMode ? 'dark bg-[#080808] text-white' : 'bg-gray-50 text-gray-900'} font-sans animate-in fade-in duration-1000`}>
