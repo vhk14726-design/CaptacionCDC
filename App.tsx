@@ -55,7 +55,7 @@ const App: React.FC = () => {
       case 'Cargar':
         return userRole === 'admin' ? <CargarPanel /> : <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
       case 'Importar':
-        return <ExcelImportPanel />;
+        return <ExcelImportPanel userRole={userRole} />;
       case 'Campañas':
         return <CampaignsPanel token={metaToken} />;
       case 'Reportes':
