@@ -53,7 +53,7 @@ const App: React.FC = () => {
       case 'Informe':
         return <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
       case 'Clientes':
-        return <CustomerInsights />;
+        return <CustomerInsights userRole={userRole} />;
       case 'Campañas':
         return <CampaignsPanel token={metaToken} />;
       case 'Reportes':
