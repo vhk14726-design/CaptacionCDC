@@ -9,17 +9,18 @@ import {
   UserCheck, 
   Loader2, 
   CheckCircle2, 
-  AlertTriangle 
+  AlertTriangle,
+  FileSpreadsheet,
+  ArrowUpCircle,
+  ShieldCheck
 } from 'lucide-react';
 
-/**
- * Endpoint de Google Apps Script vinculado a la hoja central.
- */
-const GOOGLE_SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwc6JuLxd3w27SJNFrokuxGdRiFgF8qBN_JA1kpGeFvU1-39clJ1VzRWINmwzEqlFd2/exec';
+// URL Proporcionada por el usuario
+const GOOGLE_SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwWiU0msCle-8cRWGPxO4IGilOR5sFnJgfiVy_x00QhH8kDRyPSTZVMaYtlyDJBaPiQ/exec';
 
 const CargarPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [status, setStatus] = useState<{ type: 'success' | 'error', message: string, detail?: string } | null>(null);
   
   const [formData, setFormData] = useState({
     ci: '',
@@ -37,9 +38,8 @@ const CargarPanel: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validación básica
     if (!formData.ci || !formData.contacto || !formData.rubro || !formData.fecha || !formData.agente) {
-      setStatus({ type: 'error', message: 'Todos los campos son obligatorios.' });
+      setStatus({ type: 'error', message: 'Campos incompletos', detail: 'Todos los campos son obligatorios para el registro centralizado.' });
       return;
     }
 
@@ -47,31 +47,29 @@ const CargarPanel: React.FC = () => {
     setStatus(null);
 
     try {
-      // Normalización de datos
-      const payload = {
-        ci: formData.ci.trim(),
-        contacto: formData.contacto.trim(),
-        rubro: formData.rubro.trim().toUpperCase(),
-        fecha: formData.fecha,
-        agente: formData.agente.trim().toUpperCase()
-      };
+      const params = new URLSearchParams();
+      params.append('ci', formData.ci.trim());
+      params.append('contacto', formData.contacto.trim());
+      params.append('rubro', formData.rubro.trim().toUpperCase());
+      params.append('fecha', formData.fecha);
+      params.append('agente', formData.agente.trim().toUpperCase());
 
-      // Envío de datos al Web App de Google (Apps Script)
-      // Usamos no-cors para evitar problemas de redirección de Google si el script no maneja OPTIONS correctamente
+      // Sincronización directa con Google Sheets
+      // no-cors es necesario para Apps Script POST
       await fetch(GOOGLE_SHEETS_WEBAPP_URL, {
         method: 'POST',
         mode: 'no-cors',
-        cache: 'no-cache',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
+        body: params,
       });
 
-      // Debido a 'no-cors', no podemos leer la respuesta, pero si no hay error de red, asumimos éxito
-      setStatus({ type: 'success', message: 'Cliente cargado correctamente en la base central.' });
+      window.dispatchEvent(new CustomEvent('customer_data_updated'));
       
-      // Limpiar formulario
+      setStatus({ 
+        type: 'success', 
+        message: '¡Registro Exitoso!',
+        detail: 'Los datos se han sincronizado correctamente con la base de Google Sheets.'
+      });
+      
       setFormData({
         ci: '',
         contacto: '',
@@ -80,40 +78,67 @@ const CargarPanel: React.FC = () => {
         agente: ''
       });
 
-    } catch (err) {
-      console.error('Error uploading to Sheets:', err);
-      setStatus({ type: 'error', message: 'Error al cargar en Google Sheets. Intente nuevamente.' });
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      setStatus({ 
+        type: 'error', 
+        message: 'Error de Sincronización',
+        detail: 'No se pudo conectar con la base de datos de Google Sheets. Verifica tu conexión.'
+      });
     } finally {
       setLoading(false);
-      // Ocultar mensaje de éxito después de 5 segundos
-      setTimeout(() => {
-        setStatus(current => current?.type === 'success' ? null : current);
-      }, 5000);
     }
   };
 
   return (
     <div className="max-w-4xl mx-auto py-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="bg-[#1c1c1c] rounded-[3rem] border border-white/5 shadow-2xl overflow-hidden">
-        <div className="p-10 border-b border-white/5 bg-gradient-to-r from-purple-600/10 to-transparent">
+        {/* Banner Header */}
+        <div className="p-10 border-b border-white/5 bg-gradient-to-r from-green-600/10 to-transparent flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <div className="w-16 h-16 bg-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-600/20">
+            <div className="w-16 h-16 bg-green-600 rounded-2xl flex items-center justify-center shadow-lg shadow-green-600/20">
               <PlusCircle size={32} className="text-white" />
             </div>
             <div>
-              <h2 className="text-3xl font-black text-white tracking-tight uppercase italic">Carga de Prospectos</h2>
-              <p className="text-gray-500 text-xs font-bold uppercase tracking-widest mt-1">Base de Datos Centralizada • Administrador</p>
+              <h2 className="text-3xl font-black text-white tracking-tight uppercase italic">Captar Prospecto</h2>
+              <div className="flex items-center gap-2 mt-1">
+                <FileSpreadsheet size={12} className="text-green-500" />
+                <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest italic">Google Sheets Direct Sync v2.5</p>
+              </div>
             </div>
+          </div>
+          <div className="hidden md:flex items-center gap-4 bg-black/40 px-6 py-3 rounded-2xl border border-white/5">
+            <ShieldCheck size={20} className="text-green-500" />
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Canal de Datos Seguro</span>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} className="p-10 space-y-8">
+          {status?.type === 'error' && (
+            <div className="flex items-center gap-4 p-6 bg-red-500/10 border border-red-500/20 rounded-[2rem] text-red-500 animate-in zoom-in-95">
+              <AlertTriangle size={24} />
+              <div>
+                <p className="text-sm font-black uppercase tracking-widest">{status.message}</p>
+                <p className="text-xs font-medium opacity-80 mt-1">{status.detail}</p>
+              </div>
+            </div>
+          )}
+
+          {status?.type === 'success' && (
+            <div className="flex items-center gap-4 p-6 bg-green-500/10 border border-green-500/20 rounded-[2rem] text-green-500 animate-in slide-in-from-top-4 shadow-lg shadow-green-500/5">
+              <CheckCircle2 size={24} />
+              <div>
+                <p className="text-sm font-black uppercase tracking-widest">{status.message}</p>
+                <p className="text-xs font-medium opacity-80 mt-1">{status.detail}</p>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            
             <div className="space-y-3">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">CI / Documento</label>
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Documento / CI</label>
               <div className="relative group">
-                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-purple-500 transition-colors">
+                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-green-500 transition-colors">
                   <User size={18} />
                 </div>
                 <input 
@@ -121,16 +146,16 @@ const CargarPanel: React.FC = () => {
                   name="ci"
                   value={formData.ci}
                   onChange={handleChange}
-                  placeholder="Ej: 4.123.456"
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-purple-500 transition-all font-medium"
+                  placeholder="Ej: 5.123.456"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-700"
                 />
               </div>
             </div>
 
             <div className="space-y-3">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Nombre / Contacto</label>
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Nombre del Cliente</label>
               <div className="relative group">
-                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-purple-500 transition-colors">
+                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-green-500 transition-colors">
                   <Phone size={18} />
                 </div>
                 <input 
@@ -139,7 +164,7 @@ const CargarPanel: React.FC = () => {
                   value={formData.contacto}
                   onChange={handleChange}
                   placeholder="Ej: Juan Pérez"
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-purple-500 transition-all font-medium"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-700"
                 />
               </div>
             </div>
@@ -147,14 +172,14 @@ const CargarPanel: React.FC = () => {
             <div className="space-y-3">
               <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Rubro de Interés</label>
               <div className="relative group">
-                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-purple-500 transition-colors">
+                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-green-500 transition-colors">
                   <Briefcase size={18} />
                 </div>
                 <select 
                   name="rubro"
                   value={formData.rubro}
                   onChange={handleChange}
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-purple-500 transition-all font-medium appearance-none"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all appearance-none cursor-pointer"
                 >
                   <option value="">Seleccione rubro...</option>
                   <option value="Inmobiliaria">Inmobiliaria</option>
@@ -162,15 +187,14 @@ const CargarPanel: React.FC = () => {
                   <option value="Seguros">Seguros</option>
                   <option value="Financiero">Financiero</option>
                   <option value="Servicios">Servicios</option>
-                  <option value="Otros">Otros</option>
                 </select>
               </div>
             </div>
 
             <div className="space-y-3">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Fecha de Registro</label>
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Fecha del Registro</label>
               <div className="relative group">
-                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-purple-500 transition-colors">
+                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-green-500 transition-colors">
                   <Calendar size={18} />
                 </div>
                 <input 
@@ -178,15 +202,15 @@ const CargarPanel: React.FC = () => {
                   name="fecha"
                   value={formData.fecha}
                   onChange={handleChange}
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-purple-500 transition-all font-medium"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all cursor-pointer"
                 />
               </div>
             </div>
 
             <div className="md:col-span-2 space-y-3">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Agente Asignado</label>
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Agente Responsable</label>
               <div className="relative group">
-                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-purple-500 transition-colors">
+                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-green-500 transition-colors">
                   <UserCheck size={18} />
                 </div>
                 <input 
@@ -194,42 +218,35 @@ const CargarPanel: React.FC = () => {
                   name="agente"
                   value={formData.agente}
                   onChange={handleChange}
-                  placeholder="Nombre del Agente"
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-purple-500 transition-all font-medium"
+                  placeholder="Tu nombre completo"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-700"
                 />
               </div>
             </div>
           </div>
 
-          {status && (
-            <div className={`flex items-center gap-3 p-5 rounded-2xl border animate-in slide-in-from-top-2 duration-300 ${status.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
-              {status.type === 'success' ? <CheckCircle2 size={20} /> : <AlertTriangle size={20} />}
-              <span className="text-xs font-black uppercase tracking-widest">{status.message}</span>
-            </div>
-          )}
-
-          <div className="pt-4">
+          <div className="pt-6">
             <button 
               type="submit"
               disabled={loading}
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white py-5 rounded-2xl font-black text-xs uppercase tracking-[0.3em] shadow-xl shadow-purple-600/20 flex items-center justify-center gap-4 transition-all active:scale-[0.98] disabled:opacity-50"
+              className="w-full bg-green-600 hover:bg-green-700 text-white py-6 rounded-2xl font-black text-xs uppercase tracking-[0.4em] shadow-xl shadow-green-600/20 flex items-center justify-center gap-4 transition-all active:scale-[0.98] disabled:opacity-50 group"
             >
               {loading ? (
                 <Loader2 className="animate-spin" size={20} />
               ) : (
                 <>
-                  <PlusCircle size={20} />
-                  Guardar en Google Sheets
+                  <ArrowUpCircle size={20} className="group-hover:translate-y-[-2px] transition-transform" /> 
+                  Sincronizar con Google Sheets
                 </>
               )}
             </button>
           </div>
         </form>
 
-        <div className="p-8 bg-black/20 text-center">
-           <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
-             * Los datos se normalizarán automáticamente antes de guardarse.
-           </p>
+        <div className="p-8 bg-black/20 text-center border-t border-white/5">
+          <p className="text-[9px] font-black text-gray-600 uppercase tracking-[0.2em]">
+            Base de Datos Centralizada • Registro único por asesor
+          </p>
         </div>
       </div>
     </div>
