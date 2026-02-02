@@ -1,0 +1,8 @@
+{
+  "name": "MetaBusiness Sleek Informe",
+  "description": "Un informe de negocios de alto rendimiento, con tema oscuro inspirado en diseños modernos de SaaS, que presenta gráficos en tiempo real e información empresarial impulsada por IA mediante Gemini.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
