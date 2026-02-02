@@ -5,8 +5,7 @@ import {
   Target, 
   BarChart3, 
   LogOut,
-  Users,
-  Link2Off
+  Users
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -16,9 +15,10 @@ interface SidebarProps {
   setActiveTab: (tab: string) => void;
   onLogout: () => void;
   onUnlink: () => void;
+  userRole?: 'admin' | 'user' | null;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout, onUnlink }) => {
+const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout, userRole }) => {
   const menuItems = [
     { name: 'Informe', icon: <Home size={18} />, category: 'Core' },
     { name: 'Clientes', icon: <Users size={18} />, category: 'Core' },
@@ -26,14 +26,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout, on
     { name: 'Reportes', icon: <BarChart3 size={18} />, category: 'Intelligence' },
   ];
 
-  // Logo CLC Simplificado: Solo la C y CAPTACIÓN en lila
   const Logo = () => (
     <div className="flex flex-col items-center justify-center">
-      {/* Isotipo: Una sola C en lila (#9333ea) */}
       <div className="relative flex items-center justify-center font-sans mb-2">
         <span className="text-[#9333ea] font-black leading-none select-none" style={{ fontSize: '5.5rem', letterSpacing: '-0.05em' }}>C</span>
       </div>
-      {/* Texto CAPTACIÓN en lila para unificar la marca */}
       <div className="flex justify-between w-full px-2">
         {'CAPTACIÓN'.split('').map((char, i) => (
           <span key={i} className="text-[#9333ea] text-[10px] font-black tracking-widest leading-none">
@@ -76,10 +73,6 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout, on
         <div>
           <p className="px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Sistema</p>
           <div className="space-y-1">
-            <button onClick={onUnlink} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-orange-500/80 hover:text-orange-500 hover:bg-orange-500/5 transition-all">
-              <Link2Off size={18} />
-              <span className="text-sm font-bold">Desvincular API</span>
-            </button>
             <button onClick={onLogout} className="w-full flex items-center gap-4 px-6 py-4 rounded-2xl text-red-500/80 hover:text-red-500 hover:bg-red-500/5 transition-all">
               <LogOut size={18} />
               <span className="text-sm font-bold">Cerrar Sesión</span>
@@ -89,11 +82,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout, on
       </div>
 
       <div className="p-6 border-t border-white/5 bg-[#0a0a0a]">
-        <div className="bg-gradient-to-br from-white/5 to-transparent rounded-2xl p-4 border border-white/5">
-           <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Portal Status</p>
+        <div className={`bg-gradient-to-br from-white/5 to-transparent rounded-2xl p-4 border border-white/5 ${userRole === 'admin' ? 'border-purple-500/20' : 'border-blue-500/20'}`}>
+           <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Access Status</p>
            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <p className="text-xs font-bold text-white">Enterprise v2.0</p>
+              <div className={`w-2 h-2 rounded-full animate-pulse ${userRole === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}`}></div>
+              <p className="text-xs font-bold text-white uppercase">{userRole === 'admin' ? 'Admin Mode' : 'User Mode'}</p>
            </div>
         </div>
       </div>

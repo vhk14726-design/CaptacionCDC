@@ -1,40 +1,57 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar.tsx';
 import MainDashboard from './components/MainDashboard.tsx';
 import RightPanel from './components/RightPanel.tsx';
 import CampaignsPanel from './components/CampaignsPanel.tsx';
 import ReportsCenter from './components/ReportsCenter.tsx';
 import CustomerInsights from './components/CustomerInsights.tsx';
-import { Lock, ShieldCheck, AlertCircle } from 'lucide-react';
+import LoginGate from './components/LoginGate.tsx';
+import { ShieldCheck, AlertCircle, Lock } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Informe');
   const [isDarkMode] = useState(true);
-  const [metaToken, setMetaToken] = useState(localStorage.getItem('meta_access_token') || '');
+  
+  // Token hardcodeado solicitado por el usuario
+  const FIXED_META_TOKEN = 'EAAZAsu2v6u10BQrUfHJVdylbvSt9q527Uwa1UWvzmNuhHpOQVZC00fxRTKHZBYt31zhomYFYOlAo5voto2poFILo457sgmAU5QZAXwFxAwE3BWCCCybeBqyikjy4CXTu4BEwNlZBse7QNzHa0cgfZCZCuNkcgZCZAZAiIpUNejJ2tq3rDUvjg8Q0RKCv2CRbMJg48biSFE';
+  const [metaToken] = useState(FIXED_META_TOKEN);
+  
+  // Estado de Autenticación
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userRole, setUserRole] = useState<'admin' | 'user' | null>(null);
+
+  useEffect(() => {
+    const auth = sessionStorage.getItem('auth_session');
+    const role = sessionStorage.getItem('auth_role');
+    if (auth === 'true' && role) {
+      setIsAuthenticated(true);
+      setUserRole(role as 'admin' | 'user');
+    }
+  }, []);
+
+  const handleLoginSuccess = (role: 'admin' | 'user') => {
+    setIsAuthenticated(true);
+    setUserRole(role);
+    sessionStorage.setItem('auth_session', 'true');
+    sessionStorage.setItem('auth_role', role);
+  };
 
   const handleLogout = () => {
-    localStorage.removeItem('meta_access_token');
-    localStorage.removeItem('meta_account_name');
-    setMetaToken('');
+    sessionStorage.clear();
+    setIsAuthenticated(false);
+    setUserRole(null);
     window.location.reload();
   };
 
-  const handleUnlink = () => {
-    localStorage.removeItem('meta_access_token');
-    localStorage.removeItem('meta_account_name');
-    setMetaToken('');
-  };
-
-  const handleTokenChange = (newToken: string) => {
-    localStorage.setItem('meta_access_token', newToken);
-    setMetaToken(newToken);
-  };
+  if (!isAuthenticated) {
+    return <LoginGate onLoginSuccess={handleLoginSuccess} />;
+  }
 
   const renderContent = () => {
     switch (activeTab) {
       case 'Informe':
-        return <MainDashboard isDarkMode={isDarkMode} token={metaToken} onTokenChange={handleTokenChange} />;
+        return <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
       case 'Clientes':
         return <CustomerInsights />;
       case 'Campañas':
@@ -42,19 +59,20 @@ const App: React.FC = () => {
       case 'Reportes':
         return <ReportsCenter token={metaToken} />;
       default:
-        return <MainDashboard isDarkMode={isDarkMode} token={metaToken} onTokenChange={handleTokenChange} />;
+        return <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
     }
   };
 
   return (
-    <div className={`flex min-h-screen ${isDarkMode ? 'dark bg-[#080808] text-white' : 'bg-gray-50 text-gray-900'} font-sans`}>
+    <div className={`flex min-h-screen ${isDarkMode ? 'dark bg-[#080808] text-white' : 'bg-gray-50 text-gray-900'} font-sans animate-in fade-in duration-1000`}>
       <Sidebar 
         isDarkMode={isDarkMode} 
         toggleDarkMode={() => {}} 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
         onLogout={handleLogout}
-        onUnlink={handleUnlink}
+        onUnlink={() => {}} 
+        userRole={userRole}
       />
       
       <main className="flex-1 p-6 md:p-12 overflow-y-auto">
@@ -64,15 +82,19 @@ const App: React.FC = () => {
               {activeTab}
             </h1>
             <p className="text-gray-500 text-sm font-bold uppercase tracking-[0.3em] mt-2 flex items-center gap-2">
-              <ShieldCheck size={14} className="text-purple-500" /> CLC Captación Intelligence v2.0
+              <ShieldCheck size={14} className={`transition-colors ${userRole === 'admin' ? 'text-purple-500' : 'text-blue-500'}`} /> 
+              CLC Captación Intelligence v2.0 <span className="text-gray-700">|</span> 
+              <span className={userRole === 'admin' ? 'text-purple-400' : 'text-blue-400'}>
+                {userRole === 'admin' ? ' Modo Administrador' : ' Modo Colaborador'}
+              </span>
             </p>
           </div>
           
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2 bg-black/40 px-4 py-2 rounded-xl border border-white/5">
-              <div className={`w-2 h-2 rounded-full ${metaToken ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                {metaToken ? 'Meta API Connected' : 'Meta API Disconnected'}
+                Meta API Connected
               </span>
             </div>
           </div>
@@ -92,7 +114,7 @@ const App: React.FC = () => {
              </div>
           </div>
           <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
-            © 2025 CLC Captación • Built for Paraguay Marketing
+            © 2025 CLC Captación • {userRole?.toUpperCase()} ACCESS
           </p>
         </footer>
       </main>

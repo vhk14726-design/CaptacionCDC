@@ -66,16 +66,18 @@ const ReportsCenter: React.FC<{ token: string }> = ({ token }) => {
             .replace(/\(Paraguay\)/gi, '')
             .trim();
           
-          // Corrección precisa para evitar duplicados como "CCentral"
-          // Si el nombre es exactamente "entral" (sin la C), le ponemos la C.
-          // Si ya es "Central", se queda como "Central".
-          if (cleanName.toLowerCase() === 'entral') {
-            cleanName = 'Central';
-          }
+          // Diccionario de correcciones estrictas para normalizar nombres
+          // Esto soluciona problemas de "CCentral", "IItapúa", etc.
+          const lower = cleanName.toLowerCase();
           
-          // Si el nombre es exactamente "tapúa", le ponemos la I.
-          if (cleanName.toLowerCase() === 'tapúa') {
+          if (lower === 'entral' || lower === 'ccentral' || lower === 'central') {
+            cleanName = 'Central';
+          } else if (lower === 'tapúa' || lower === 'itapúa' || lower === 'iitapúa' || lower === 'itapua') {
             cleanName = 'Itapúa';
+          } else if (lower === 'asunción' || lower === 'asuncion') {
+            cleanName = 'Asunción';
+          } else if (lower === 'alto parana' || lower === 'alto paraná') {
+            cleanName = 'Alto Paraná';
           }
           
           return { name: cleanName, value: parseInt(d.reach) || 0 };

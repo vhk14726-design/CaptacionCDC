@@ -25,12 +25,10 @@ interface MetaMetrics {
 interface MainDashboardProps {
   isDarkMode: boolean;
   token: string;
-  onTokenChange?: (token: string) => void;
 }
 
-const MainDashboard: React.FC<MainDashboardProps> = ({ token, onTokenChange }) => {
+const MainDashboard: React.FC<MainDashboardProps> = ({ token }) => {
   const [loading, setLoading] = useState(false);
-  const [inputToken, setInputToken] = useState('');
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState('all');
   const [datePreset, setDatePreset] = useState('last_30d');
@@ -54,7 +52,6 @@ const MainDashboard: React.FC<MainDashboardProps> = ({ token, onTokenChange }) =
       cpc: 0
     });
     setCampaigns([]);
-    setInputToken('');
   };
 
   const formatPYG = (amount: number) => {
@@ -123,19 +120,8 @@ const MainDashboard: React.FC<MainDashboardProps> = ({ token, onTokenChange }) =
   };
 
   useEffect(() => {
-    if (token) {
-      fetchData(token);
-    } else {
-      resetAllData();
-    }
+    fetchData(token);
   }, [token, datePreset, selectedCampaign]);
-
-  const handleSaveToken = () => {
-    if (!inputToken.trim()) return;
-    if (onTokenChange) onTokenChange(inputToken);
-  };
-
-  const showTokenInput = !token;
 
   return (
     <div className="space-y-8 pb-10 min-h-[calc(100vh-180px)]">
@@ -145,8 +131,7 @@ const MainDashboard: React.FC<MainDashboardProps> = ({ token, onTokenChange }) =
           <select 
             value={datePreset} 
             onChange={(e) => setDatePreset(e.target.value)}
-            disabled={showTokenInput}
-            className="appearance-none bg-transparent text-xs font-bold text-white outline-none pr-6 cursor-pointer disabled:opacity-30"
+            className="appearance-none bg-transparent text-xs font-bold text-white outline-none pr-6 cursor-pointer"
             style={{ colorScheme: 'dark' }}
           >
             <option value="today">Hoy</option>
@@ -163,8 +148,7 @@ const MainDashboard: React.FC<MainDashboardProps> = ({ token, onTokenChange }) =
           <select 
             value={selectedCampaign} 
             onChange={(e) => setSelectedCampaign(e.target.value)}
-            disabled={showTokenInput}
-            className="appearance-none bg-transparent text-xs font-bold text-white outline-none w-full pr-8 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap disabled:opacity-30"
+            className="appearance-none bg-transparent text-xs font-bold text-white outline-none w-full pr-8 cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap"
             style={{ colorScheme: 'dark' }}
           >
             <option value="all">Todas las Campañas</option>
@@ -176,24 +160,7 @@ const MainDashboard: React.FC<MainDashboardProps> = ({ token, onTokenChange }) =
         {loading && <Loader2 size={20} className="animate-spin text-purple-500 ml-auto" />}
       </div>
 
-      {showTokenInput && (
-        <div className="bg-[#1c1c1c] border border-purple-500/30 p-8 rounded-[2rem] shadow-2xl animate-in zoom-in-95 duration-300">
-          <h4 className="text-sm font-bold text-white mb-4">Sincronizar Meta API</h4>
-          <p className="text-xs text-gray-500 mb-6">Actualmente no hay un token vinculado. Ingresa un token de acceso de Meta para comenzar a visualizar datos reales en este Informe.</p>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <input 
-              type="password"
-              value={inputToken}
-              onChange={(e) => setInputToken(e.target.value)}
-              placeholder="Token de Acceso de Meta..."
-              className="flex-1 bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-xs font-mono text-purple-400 focus:outline-none focus:border-purple-500"
-            />
-            <button onClick={handleSaveToken} className="bg-purple-600 px-8 py-4 rounded-2xl text-sm font-bold hover:bg-purple-700 transition-colors shadow-lg shadow-purple-600/20 active:scale-95">Conectar Portal</button>
-          </div>
-        </div>
-      )}
-
-      <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transition-all duration-500 ${showTokenInput ? 'opacity-30 pointer-events-none grayscale blur-[2px]' : 'opacity-100'}`}>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 transition-all duration-500">
         {[
           { label: 'Alcance', value: metrics.reach.toLocaleString(), icon: <TrendingUp />, color: 'text-green-500', bg: 'bg-green-500/10' },
           { label: 'Impresiones', value: metrics.impressions.toLocaleString(), icon: <Eye />, color: 'text-blue-500', bg: 'bg-blue-500/10' },
@@ -212,7 +179,7 @@ const MainDashboard: React.FC<MainDashboardProps> = ({ token, onTokenChange }) =
         ))}
       </div>
 
-      <div className={`bg-[#1c1c1c] p-10 rounded-[2.5rem] border border-white/5 shadow-2xl flex-1 transition-all duration-500 ${showTokenInput ? 'opacity-30 pointer-events-none grayscale blur-[2px]' : 'opacity-100'}`}>
+      <div className="bg-[#1c1c1c] p-10 rounded-[2.5rem] border border-white/5 shadow-2xl flex-1 transition-all duration-500">
         <h3 className="text-xl font-bold text-white mb-8">Tendencia de Gasto (PYG)</h3>
         <div className="h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
