@@ -1,4 +1,3 @@
-
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -7,7 +6,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    minify: 'terser',
+    // Eliminamos 'minify: terser' para que Vite use esbuild (incluido por defecto).
+    // Esto es mucho más rápido y soluciona el error de dependencia en Vercel.
     rollupOptions: {
       output: {
         manualChunks: {
