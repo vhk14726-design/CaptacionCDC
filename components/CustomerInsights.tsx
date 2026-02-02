@@ -198,7 +198,7 @@ const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
               </div>
               <div className="bg-black/40 p-5 rounded-2xl border border-white/5">
                 <p className="text-[10px] font-black text-green-400 uppercase tracking-widest mb-2">Solución:</p>
-                <p className="text-xs text-gray-500 leading-relaxed">Ve a tu Apps Script, haz clic en <strong>Implementar > Nueva Implementación</strong> y pon "Quién tiene acceso" en <strong>Cualquier persona</strong>.</p>
+                <p className="text-xs text-gray-500 leading-relaxed">Ve a tu Apps Script, haz clic en <strong>Implementar &gt; Nueva Implementación</strong> y pon "Quién tiene acceso" en <strong>Cualquier persona</strong>.</p>
               </div>
             </div>
           </div>
