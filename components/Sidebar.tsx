@@ -5,7 +5,8 @@ import {
   Target, 
   BarChart3, 
   LogOut,
-  Users
+  Users,
+  PlusCircle
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -19,11 +20,14 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout, userRole }) => {
+  const isAdmin = userRole === 'admin';
+
   const menuItems = [
-    { name: 'Informe', icon: <Home size={18} />, category: 'Core' },
-    { name: 'Clientes', icon: <Users size={18} />, category: 'Core' },
-    { name: 'Campañas', icon: <Target size={18} />, category: 'Ads' },
-    { name: 'Reportes', icon: <BarChart3 size={18} />, category: 'Intelligence' },
+    { name: 'Informe', icon: <Home size={18} />, category: 'Core', show: true },
+    { name: 'Clientes', icon: <Users size={18} />, category: 'Core', show: true },
+    { name: 'Cargar', icon: <PlusCircle size={18} />, category: 'Core', show: isAdmin },
+    { name: 'Campañas', icon: <Target size={18} />, category: 'Ads', show: true },
+    { name: 'Reportes', icon: <BarChart3 size={18} />, category: 'Intelligence', show: true },
   ];
 
   const Logo = () => (
@@ -51,7 +55,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout, us
         <div>
           <p className="px-6 text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-4">Módulos</p>
           <div className="space-y-1">
-            {menuItems.map((item) => (
+            {menuItems.filter(item => item.show).map((item) => (
               <button 
                 key={item.name}
                 onClick={() => setActiveTab(item.name)}
@@ -82,11 +86,11 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout, us
       </div>
 
       <div className="p-6 border-t border-white/5 bg-[#0a0a0a]">
-        <div className={`bg-gradient-to-br from-white/5 to-transparent rounded-2xl p-4 border border-white/5 ${userRole === 'admin' ? 'border-purple-500/20' : 'border-blue-500/20'}`}>
+        <div className={`bg-gradient-to-br from-white/5 to-transparent rounded-2xl p-4 border border-white/5 ${isAdmin ? 'border-purple-500/20' : 'border-blue-500/20'}`}>
            <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mb-2">Access Status</p>
            <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full animate-pulse ${userRole === 'admin' ? 'bg-purple-500' : 'bg-blue-500'}`}></div>
-              <p className="text-xs font-bold text-white uppercase">{userRole === 'admin' ? 'Admin Mode' : 'User Mode'}</p>
+              <div className={`w-2 h-2 rounded-full animate-pulse ${isAdmin ? 'bg-purple-500' : 'bg-blue-500'}`}></div>
+              <p className="text-xs font-bold text-white uppercase">{isAdmin ? 'Admin Mode' : 'User Mode'}</p>
            </div>
         </div>
       </div>

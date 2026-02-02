@@ -6,6 +6,7 @@ import RightPanel from './components/RightPanel.tsx';
 import CampaignsPanel from './components/CampaignsPanel.tsx';
 import ReportsCenter from './components/ReportsCenter.tsx';
 import CustomerInsights from './components/CustomerInsights.tsx';
+import CargarPanel from './components/CargarPanel.tsx';
 import LoginGate from './components/LoginGate.tsx';
 import { ShieldCheck, AlertCircle, Lock } from 'lucide-react';
 
@@ -53,7 +54,9 @@ const App: React.FC = () => {
       case 'Informe':
         return <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
       case 'Clientes':
-        return <CustomerInsights userRole={userRole} />;
+        return <CustomerInsights />;
+      case 'Cargar':
+        return userRole === 'admin' ? <CargarPanel /> : <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
       case 'Campañas':
         return <CampaignsPanel token={metaToken} />;
       case 'Reportes':

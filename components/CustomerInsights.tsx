@@ -1,23 +1,20 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Users, 
   TrendingUp, 
   Briefcase,
   Search,
   CalendarDays,
-  FileSpreadsheet,
   CheckCircle,
   AlertCircle,
   Loader2,
-  Trash2,
   Calendar,
   RefreshCw,
   Clock,
   CloudIcon,
   Server,
-  Settings,
-  AlertTriangle
+  Database
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -29,14 +26,12 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
-import * as XLSX from 'xlsx';
 import { createClient } from '@supabase/supabase-js';
 
-// Inicialización de Supabase con los datos proporcionados por el usuario
+// Inicialización de Supabase
 const supabaseUrl = process.env.SUPABASE_URL || 'https://qhexfrvlefnxwjtoshhl.supabase.co';
 const supabaseKey = process.env.SUPABASE_ANON_KEY || 'sb_publishable_8T1c0D57VXBjtfPuIg9FLg_ne34-pZw';
-
-const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface StandardizedRecord {
   fecha: string;
@@ -44,48 +39,45 @@ interface StandardizedRecord {
   cliente: string;
 }
 
-interface CustomerInsightsProps {
-  userRole?: 'admin' | 'user' | null;
-}
-
-const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
+const CustomerInsights: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [records, setRecords] = useState<StandardizedRecord[]>([]);
-  const [isImporting, setIsImporting] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const isAdmin = userRole === 'admin';
-  const isConfigured = !!supabase;
+  const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   // Consulta los datos desde Supabase
-  const fetchFromCloud = async (silent = false) => {
-    if (!isConfigured) return;
-
+  const fetchData = async (silent = false) => {
     if (!silent) setIsSyncing(true);
     try {
-      const { data, error } = await supabase!
+      const { data, error } = await supabase
         .from('customers')
         .select('fecha, rubro, cliente')
-        .order('fecha', { ascending: true });
+        .order('id', { ascending: false });
 
       if (error) throw error;
 
       setRecords(data || []);
-      setLastSync(new Date().toLocaleTimeString());
-      if (!silent) setImportStatus({ type: 'success', message: 'Base centralizada sincronizada correctamente.' });
+      const now = new Date();
+      setLastSync(now.toLocaleTimeString('es-PY', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      
+      if (!silent) {
+        setStatus({ type: 'success', message: `Sincronizado: ${data?.length || 0} registros obtenidos de la nube.` });
+        setTimeout(() => setStatus(null), 3000);
+      }
     } catch (err: any) {
       console.error('Fetch error:', err);
-      if (!silent) setImportStatus({ type: 'error', message: 'Error al obtener datos de la nube.' });
+      setStatus({ type: 'error', message: 'Error al conectar con la base central.' });
     } finally {
       if (!silent) setIsSyncing(false);
     }
   };
 
   useEffect(() => {
-    fetchFromCloud(true);
+    fetchData(true);
+    // Auto-refresh cada 5 minutos
+    const interval = setInterval(() => fetchData(true), 300000);
+    return () => clearInterval(interval);
   }, []);
 
   const analytics = useMemo(() => {
@@ -101,8 +93,19 @@ const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
       dateCount[fecha] = (dateCount[fecha] || 0) + 1;
     });
 
-    const rubros = Object.entries(rubroCount).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-    const chartData = Object.entries(dateCount).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day, undefined, { numeric: true }));
+    const rubros = Object.entries(rubroCount)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+      
+    const chartData = Object.entries(dateCount)
+      .map(([day, count]) => ({ day, count }))
+      .sort((a, b) => {
+        // Ordenar por fecha DD/MM (asumiendo este formato)
+        const [d1, m1] = a.day.split('/').map(Number);
+        const [d2, m2] = b.day.split('/').map(Number);
+        return (m1 * 100 + d1) - (m2 * 100 + d2);
+      });
+
     return { total, avg: total / (chartData.length || 1), rubros, chartData, totalDays: chartData.length };
   }, [records]);
 
@@ -110,145 +113,43 @@ const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
     return analytics.rubros.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [analytics.rubros, searchTerm]);
 
-  // Procesa el Excel y sincroniza con Supabase
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!isAdmin || !isConfigured) return;
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsImporting(true);
-    setImportStatus(null);
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const dataBuffer = new Uint8Array(event.target?.result as ArrayBuffer);
-        const workbook = XLSX.read(dataBuffer, { type: 'array', cellDates: true });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json<any>(worksheet);
-
-        if (jsonData.length === 0) throw new Error('El archivo Excel está vacío.');
-
-        const cleaned = jsonData.map(item => {
-          const findVal = (keys: string[]) => {
-            const foundKey = Object.keys(item).find(k => keys.includes(k.toLowerCase().trim().replace(/ /g, '_')));
-            return foundKey ? item[foundKey] : null;
-          };
-
-          const rawFecha = findVal(['fecha_de_carga', 'fecha']);
-          let fechaStr = 'N/A';
-          if (rawFecha instanceof Date) {
-            fechaStr = rawFecha.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit' });
-          } else if (rawFecha) {
-            fechaStr = String(rawFecha);
-          }
-
-          return {
-            fecha: fechaStr,
-            rubro: String(findVal(['rubro']) || 'N/A'),
-            cliente: String(findVal(['ci_cliente', 'cliente']) || 'N/A')
-          };
-        });
-
-        // Borrar anterior e insertar nuevo
-        const { error: deleteError } = await supabase!.from('customers').delete().neq('cliente', '___dummy___');
-        if (deleteError) throw deleteError;
-
-        const { error: insertError } = await supabase!.from('customers').insert(cleaned);
-        if (insertError) throw insertError;
-
-        await fetchFromCloud(true);
-        setImportStatus({ type: 'success', message: `Base centralizada: ${cleaned.length} registros cargados.` });
-      } catch (err: any) {
-        setImportStatus({ type: 'error', message: err.message || 'Error al procesar el Excel.' });
-      } finally {
-        setIsImporting(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
-  const handleReset = async () => {
-    if (!isAdmin || !isConfigured) return;
-    if (confirm('¡ADVERTENCIA! ¿Deseas eliminar permanentemente TODOS los datos de la nube y resetear los contadores a 0?')) {
-      setIsSyncing(true);
-      try {
-        // Borramos todo lo que no sea el registro dummy de seguridad
-        const { error } = await supabase!.from('customers').delete().neq('cliente', '___dummy___');
-        if (error) throw error;
-        
-        // Ponemos todo en 0 inmediatamente en la interfaz
-        setRecords([]);
-        setImportStatus({ type: 'success', message: 'Base de datos reseteada. Todos los valores están en 0.' });
-      } catch (err) {
-        setImportStatus({ type: 'error', message: 'Error al intentar resetear la base de datos.' });
-      } finally {
-        setIsSyncing(false);
-      }
-    }
-  };
-
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-20">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h2 className="text-4xl font-black text-white tracking-tighter uppercase italic">Analítica Centralizada</h2>
+          <h2 className="text-4xl font-black text-white tracking-tighter uppercase italic flex items-center gap-3">
+             <Database className="text-purple-500" size={32} />
+             Analítica en Tiempo Real
+          </h2>
           <div className="flex items-center gap-3 mt-1">
              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full border bg-green-500/10 border-green-500/10 text-green-500">
                <CloudIcon size={10} />
                <span className="text-[9px] font-black uppercase tracking-widest">
-                 Cloud Connect Activo
+                 Conectado a Google Sheets
                </span>
              </div>
              {lastSync && (
                <span className="text-[9px] font-black text-purple-500 uppercase tracking-widest bg-purple-500/5 px-2 py-0.5 rounded-full border border-purple-500/10 flex items-center gap-1">
-                 <Clock size={10} /> Sync: {lastSync}
+                 <Clock size={10} /> ÚLTIMA SYNC: {lastSync}
                </span>
              )}
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
-          {isAdmin ? (
-            <>
-              <input type="file" ref={fileInputRef} accept=".xlsx, .xls" className="hidden" onChange={handleFileUpload} />
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isImporting}
-                className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-2xl flex items-center gap-3 text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:opacity-30 border border-purple-500/30"
-              >
-                {isImporting ? <Loader2 className="animate-spin" size={16} /> : <FileSpreadsheet size={16} />}
-                Cargar Excel
-              </button>
-              
-              <button 
-                onClick={handleReset} 
-                disabled={isSyncing}
-                className="bg-red-500/10 hover:bg-red-600 text-red-500 hover:text-white px-6 py-3 rounded-2xl flex items-center gap-3 text-xs font-black uppercase tracking-widest transition-all border border-red-500/20 active:scale-95 disabled:opacity-30"
-              >
-                {isSyncing ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
-                Resetear Datos
-              </button>
-            </>
-          ) : (
-            <button 
-              onClick={() => fetchFromCloud()}
-              disabled={isSyncing}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-2xl flex items-center gap-3 text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:opacity-30"
-            >
-              {isSyncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
-              Sincronizar Nube
-            </button>
-          )}
-        </div>
+        <button 
+          onClick={() => fetchData()}
+          disabled={isSyncing}
+          className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-2xl flex items-center gap-3 text-xs font-black uppercase tracking-widest transition-all shadow-xl active:scale-95 disabled:opacity-30 border border-purple-500/30 group"
+        >
+          {isSyncing ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw className="group-hover:rotate-180 transition-transform duration-500" size={16} />}
+          Actualizar Ahora
+        </button>
       </div>
 
-      {importStatus && (
-        <div className={`flex items-center gap-3 p-4 rounded-2xl border animate-in slide-in-from-top-2 duration-300 ${importStatus.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
-          {importStatus.type === 'success' ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
-          <span className="text-xs font-black uppercase tracking-widest">{importStatus.message}</span>
-          <button onClick={() => setImportStatus(null)} className="ml-auto text-[10px] font-black uppercase opacity-50 hover:opacity-100">Cerrar</button>
+      {status && (
+        <div className={`flex items-center gap-3 p-4 rounded-2xl border animate-in slide-in-from-top-2 duration-300 ${status.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
+          {status.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+          <span className="text-xs font-black uppercase tracking-widest">{status.message}</span>
         </div>
       )}
 
@@ -257,9 +158,9 @@ const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
           <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full -mr-10 -mt-10 group-hover:scale-150 transition-transform duration-700"></div>
           <Users size={48} className="text-[#9333ea] mb-6 opacity-40 group-hover:scale-110 transition-transform" />
           <div>
-            <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.3em]">Total Clientes (Base)</p>
+            <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.3em]">Total Clientes Captados</p>
             <h2 className="text-6xl font-black text-white mt-1 leading-none tracking-tighter">
-              {analytics.total}
+              {isSyncing ? '...' : analytics.total}
             </h2>
           </div>
         </div>
@@ -267,9 +168,9 @@ const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
         <div className="bg-[#1c1c1c] p-10 rounded-[2.5rem] border border-white/5 flex flex-col justify-between shadow-2xl group relative overflow-hidden">
           <TrendingUp size={48} className="text-blue-500 mb-6 opacity-40 group-hover:scale-110 transition-transform" />
           <div>
-            <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.3em]">Promedio Captación</p>
+            <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.3em]">Promedio Diario</p>
             <h2 className="text-6xl font-black text-white mt-1 leading-none tracking-tighter">
-              {analytics.avg.toFixed(1)}
+              {isSyncing ? '...' : analytics.avg.toFixed(1)}
             </h2>
           </div>
         </div>
@@ -277,9 +178,9 @@ const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
         <div className="bg-[#1c1c1c] p-10 rounded-[2.5rem] border border-white/5 flex flex-col justify-between shadow-2xl group relative overflow-hidden">
           <CalendarDays size={48} className="text-emerald-500 mb-6 opacity-40 group-hover:scale-110 transition-transform" />
           <div>
-            <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.3em]">Días Registrados</p>
+            <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.3em]">Días de Actividad</p>
             <h2 className="text-6xl font-black text-white mt-1 leading-none tracking-tighter">
-              {analytics.totalDays}
+              {isSyncing ? '...' : analytics.totalDays}
             </h2>
           </div>
         </div>
@@ -288,7 +189,7 @@ const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         <div className="bg-[#1c1c1c] p-10 rounded-[2.5rem] border border-white/5 shadow-2xl">
           <h3 className="text-xl font-black text-white mb-10 flex items-center gap-3 uppercase tracking-tighter italic">
-            <Calendar size={24} className="text-[#9333ea]" /> Tendencia Temporal
+            <Calendar size={24} className="text-[#9333ea]" /> Historial de Captación
           </h3>
           <div className="h-[350px] w-full">
             {records.length > 0 ? (
@@ -297,10 +198,10 @@ const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
                   <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#4b5563', fontSize: 10, fontWeight: 900}} />
                   <YAxis axisLine={false} tickLine={false} tick={{fill: '#4b5563', fontSize: 10, fontWeight: 900}} />
-                  <Tooltip contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #ffffff10', borderRadius: '16px' }} />
+                  <Tooltip cursor={{fill: 'white', opacity: 0.05}} contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #ffffff10', borderRadius: '16px' }} />
                   <Bar dataKey="count" fill="#9333ea" radius={[8, 8, 0, 0]} barSize={25}>
                       {analytics.chartData.map((_, index) => (
-                          <Cell key={`cell-${index}`} fill={index === analytics.chartData.length - 1 ? '#9333ea' : '#9333ea40'} />
+                          <Cell key={`cell-${index}`} fill={index === analytics.chartData.length - 1 ? '#9333ea' : '#9333ea30'} />
                       ))}
                   </Bar>
                 </BarChart>
@@ -308,7 +209,7 @@ const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-gray-700">
                 <Server size={48} className="mb-4 opacity-10" />
-                <p className="text-[10px] font-black uppercase tracking-widest italic opacity-40">Sin datos disponibles (0)</p>
+                <p className="text-[10px] font-black uppercase tracking-widest italic opacity-40">Sin datos en la nube</p>
               </div>
             )}
           </div>
@@ -317,13 +218,13 @@ const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
         <div className="bg-[#1c1c1c] p-10 rounded-[3rem] border border-white/5 shadow-2xl flex flex-col max-h-[500px]">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-xl font-black text-white flex items-center gap-3 uppercase tracking-tighter italic">
-              <Briefcase size={24} className="text-[#9333ea]" /> Distribución por Rubro
+              <Briefcase size={24} className="text-[#9333ea]" /> Rubros Principales
             </h3>
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" />
               <input 
                 type="text" 
-                placeholder="Filtrar..." 
+                placeholder="Filtrar rubro..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="bg-black/40 border border-white/5 rounded-full py-2 pl-9 pr-4 text-[10px] font-black text-white focus:outline-none w-36"
@@ -357,7 +258,7 @@ const CustomerInsights: React.FC<CustomerInsightsProps> = ({ userRole }) => {
               );
             }) : (
               <div className="h-full flex items-center justify-center py-20 opacity-30 italic font-black uppercase text-[10px] tracking-widest">
-                No hay rubros para mostrar
+                Esperando datos de Sheets...
               </div>
             )}
           </div>
