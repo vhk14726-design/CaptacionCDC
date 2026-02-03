@@ -3,7 +3,6 @@ import React, { useState } from 'react';
 import { 
   PlusCircle, 
   User, 
-  Phone, 
   Briefcase, 
   Calendar, 
   UserCheck, 
@@ -12,7 +11,8 @@ import {
   AlertTriangle,
   FileSpreadsheet,
   ArrowUpCircle,
-  ShieldCheck
+  ShieldCheck,
+  Edit3
 } from 'lucide-react';
 
 // URL Proporcionada por el usuario
@@ -21,24 +21,40 @@ const GOOGLE_SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwWiU0
 const CargarPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error', message: string, detail?: string } | null>(null);
+  const [otroRubro, setOtroRubro] = useState('');
   
   const [formData, setFormData] = useState({
     ci: '',
-    contacto: '',
     rubro: '',
     fecha: new Date().toISOString().split('T')[0],
     agente: ''
   });
 
+  const rubrosPredefinidos = [
+    'MEC',
+    'SALUD',
+    'POLICIA',
+    'MILITAR',
+    'FFAA',
+    'IPS',
+    'UNA',
+    'JUBILADO/A'
+  ];
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    if (name === 'rubro' && value !== 'OTROS') {
+      setOtroRubro('');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.ci || !formData.contacto || !formData.rubro || !formData.fecha || !formData.agente) {
+    const finalRubro = formData.rubro === 'OTROS' ? otroRubro : formData.rubro;
+
+    if (!formData.ci || !finalRubro || !formData.fecha || !formData.agente) {
       setStatus({ type: 'error', message: 'Campos incompletos', detail: 'Todos los campos son obligatorios para el registro centralizado.' });
       return;
     }
@@ -49,13 +65,13 @@ const CargarPanel: React.FC = () => {
     try {
       const params = new URLSearchParams();
       params.append('ci', formData.ci.trim());
-      params.append('contacto', formData.contacto.trim());
-      params.append('rubro', formData.rubro.trim().toUpperCase());
+      // Como se quitó el nombre del cliente, usamos la CI como identificador de contacto
+      params.append('contacto', `CLIENTE_${formData.ci.trim()}`);
+      params.append('rubro', finalRubro.trim().toUpperCase());
       params.append('fecha', formData.fecha);
       params.append('agente', formData.agente.trim().toUpperCase());
 
       // Sincronización directa con Google Sheets
-      // no-cors es necesario para Apps Script POST
       await fetch(GOOGLE_SHEETS_WEBAPP_URL, {
         method: 'POST',
         mode: 'no-cors',
@@ -72,11 +88,11 @@ const CargarPanel: React.FC = () => {
       
       setFormData({
         ci: '',
-        contacto: '',
         rubro: '',
         fecha: new Date().toISOString().split('T')[0],
         agente: ''
       });
+      setOtroRubro('');
 
     } catch (err: any) {
       console.error('Upload error:', err);
@@ -147,24 +163,24 @@ const CargarPanel: React.FC = () => {
                   value={formData.ci}
                   onChange={handleChange}
                   placeholder="Ej: 5.123.456"
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-700"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-700 font-bold"
                 />
               </div>
             </div>
 
             <div className="space-y-3">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Nombre del Cliente</label>
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Agente Responsable</label>
               <div className="relative group">
                 <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-green-500 transition-colors">
-                  <Phone size={18} />
+                  <UserCheck size={18} />
                 </div>
                 <input 
                   type="text"
-                  name="contacto"
-                  value={formData.contacto}
+                  name="agente"
+                  value={formData.agente}
                   onChange={handleChange}
-                  placeholder="Ej: Juan Pérez"
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-700"
+                  placeholder="Tu nombre completo"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-700 font-bold"
                 />
               </div>
             </div>
@@ -179,15 +195,17 @@ const CargarPanel: React.FC = () => {
                   name="rubro"
                   value={formData.rubro}
                   onChange={handleChange}
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all appearance-none cursor-pointer"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-10 text-sm text-white focus:outline-none focus:border-green-500 transition-all appearance-none cursor-pointer font-bold"
                 >
                   <option value="">Seleccione rubro...</option>
-                  <option value="Inmobiliaria">Inmobiliaria</option>
-                  <option value="Automotriz">Automotriz</option>
-                  <option value="Seguros">Seguros</option>
-                  <option value="Financiero">Financiero</option>
-                  <option value="Servicios">Servicios</option>
+                  {rubrosPredefinidos.map(rubro => (
+                    <option key={rubro} value={rubro}>{rubro}</option>
+                  ))}
+                  <option value="OTROS">OTROS (Ingresar manual)</option>
                 </select>
+                <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                  <ArrowUpCircle size={16} className="rotate-180" />
+                </div>
               </div>
             </div>
 
@@ -202,27 +220,28 @@ const CargarPanel: React.FC = () => {
                   name="fecha"
                   value={formData.fecha}
                   onChange={handleChange}
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all cursor-pointer"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all cursor-pointer font-bold"
                 />
               </div>
             </div>
 
-            <div className="md:col-span-2 space-y-3">
-              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Agente Responsable</label>
-              <div className="relative group">
-                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-green-500 transition-colors">
-                  <UserCheck size={18} />
+            {formData.rubro === 'OTROS' && (
+              <div className="md:col-span-2 space-y-3 animate-in slide-in-from-top-2 duration-300">
+                <label className="text-[10px] font-black text-purple-400 uppercase tracking-widest ml-1">Especificar Rubro Manual</label>
+                <div className="relative group">
+                  <div className="absolute left-5 top-1/2 -translate-y-1/2 text-purple-500">
+                    <Edit3 size={18} />
+                  </div>
+                  <input 
+                    type="text"
+                    value={otroRubro}
+                    onChange={(e) => setOtroRubro(e.target.value)}
+                    placeholder="Escriba el rubro aquí..."
+                    className="w-full bg-purple-500/5 border border-purple-500/20 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-purple-500 transition-all placeholder:text-gray-700 font-bold"
+                  />
                 </div>
-                <input 
-                  type="text"
-                  name="agente"
-                  value={formData.agente}
-                  onChange={handleChange}
-                  placeholder="Tu nombre completo"
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-700"
-                />
               </div>
-            </div>
+            )}
           </div>
 
           <div className="pt-6">
