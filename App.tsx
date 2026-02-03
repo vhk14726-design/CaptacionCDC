@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar.tsx';
 import MainDashboard from './components/MainDashboard.tsx';
-import RightPanel from './components/RightPanel.tsx';
 import CampaignsPanel from './components/CampaignsPanel.tsx';
 import ReportsCenter from './components/ReportsCenter.tsx';
 import CustomerInsights from './components/CustomerInsights.tsx';
@@ -81,13 +80,14 @@ const App: React.FC = () => {
         userRole={userRole}
       />
       
-      <main className="flex-1 p-6 md:p-12 overflow-y-auto">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-12 gap-4">
+      {/* Main Content Area - Ahora toma todo el ancho disponible */}
+      <main className="flex-1 p-6 md:p-16 overflow-y-auto">
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-16 gap-4">
           <div>
-            <h1 className="text-4xl font-black tracking-tighter text-white">
+            <h1 className="text-5xl font-black tracking-tighter text-white uppercase italic">
               {activeTab}
             </h1>
-            <p className="text-gray-500 text-sm font-bold uppercase tracking-[0.3em] mt-2 flex items-center gap-2">
+            <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3 flex items-center gap-2">
               <ShieldCheck size={14} className={`transition-colors ${userRole === 'admin' ? 'text-purple-500' : 'text-blue-500'}`} /> 
               CLC Captación Intelligence v2.0 <span className="text-gray-700">|</span> 
               <span className={userRole === 'admin' ? 'text-purple-400' : 'text-blue-400'}>
@@ -97,37 +97,33 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 bg-black/40 px-4 py-2 rounded-xl border border-white/5">
+            <div className="flex items-center gap-2 bg-[#121212] px-5 py-2.5 rounded-2xl border border-white/5">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                Meta API Connected
+                Meta Engine Online
               </span>
             </div>
           </div>
         </header>
 
-        <div className="max-w-7xl mx-auto">
+        <div className="max-w-[1600px] mx-auto">
           {renderContent()}
         </div>
 
-        <footer className="mt-20 border-t border-white/5 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 opacity-30 group hover:opacity-100 transition-opacity">
+        <footer className="mt-24 border-t border-white/5 pt-10 flex flex-col md:flex-row justify-between items-center gap-4 opacity-30 group hover:opacity-100 transition-opacity">
           <div className="flex items-center gap-6">
              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-500">
-                <Lock size={12} /> Secure Tunneling
+                <Lock size={12} /> SSL Encrypted
              </div>
              <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-gray-500">
-                <AlertCircle size={12} /> Data Privacy Compliant
+                <AlertCircle size={12} /> Compliance Certified
              </div>
           </div>
           <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
-            © 2025 CLC Captación • {userRole?.toUpperCase()} ACCESS
+            © 2025 CLC Captación Intelligence • {userRole?.toUpperCase()} ACCESS
           </p>
         </footer>
       </main>
-
-      <aside className="w-96 bg-[#0d0d0d] border-l border-white/5 h-screen sticky top-0 hidden xl:block overflow-y-auto">
-        <RightPanel token={metaToken} />
-      </aside>
     </div>
   );
 };
