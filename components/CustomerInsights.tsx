@@ -9,7 +9,14 @@ import {
   BarChart3,
   ChevronDown,
   Globe,
-  PieChart as PieChartIcon
+  PieChart as PieChartIcon,
+  Phone,
+  User,
+  Calendar,
+  Briefcase,
+  UserCheck,
+  TrendingUp,
+  Activity
 } from 'lucide-react';
 import { 
   XAxis, 
@@ -27,7 +34,6 @@ import { supabase } from '../supabase.ts';
 
 const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwWiU0msCle-8cRWGPxO4IGilOR5sFnJgfiVy_x00QhH8kDRyPSTZVMaYtlyDJBaPiQ/exec';
 
-// Colores exactos de la referencia visual
 const CHART_COLORS = [
   '#9333ea', // MEC (Púrpura)
   '#3b82f6', // SALUD (Azul)
@@ -42,6 +48,7 @@ const CHART_COLORS = [
 interface StandardizedRecord {
   ci: string;
   contacto: string;
+  telefono?: string;
   rubro: string;
   fecha: string;
   agente: string;
@@ -85,7 +92,13 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
         if (!sbError && sbData) {
           sbData.forEach(item => {
             const cleanCI = String(item.ci || '').trim();
-            if (cleanCI) uniqueRecordsMap.set(cleanCI, { ...item, source: 'supabase' });
+            if (cleanCI) {
+              let phone = item.telefono || '';
+              if (!phone && item.contacto?.includes('TEL:')) {
+                phone = item.contacto.split('TEL:')[1].trim();
+              }
+              uniqueRecordsMap.set(cleanCI, { ...item, telefono: phone, source: 'supabase' });
+            }
           });
         }
       }
@@ -96,9 +109,14 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
           data.forEach((item: any) => {
             const cleanCI = String(item.ci || '').trim();
             if (cleanCI && !uniqueRecordsMap.has(cleanCI)) {
+              let phone = item.telefono || '';
+              if (!phone && item.contacto?.includes('TEL:')) {
+                phone = item.contacto.split('TEL:')[1].trim();
+              }
               uniqueRecordsMap.set(cleanCI, {
                 ci: cleanCI,
                 contacto: String(item.contacto || ''),
+                telefono: phone,
                 rubro: String(item.rubro || ''),
                 fecha: String(item.fecha || ''),
                 agente: String(item.agente || ''),
@@ -122,9 +140,11 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
   const filtered = useMemo(() => {
     return records.filter(r => {
       const search = searchTerm.toLowerCase();
-      const matchText = r.contacto.toLowerCase().includes(search) || 
-                       r.ci.includes(searchTerm) ||
-                       r.rubro.toLowerCase().includes(search);
+      const matchText = (r.contacto || '').toLowerCase().includes(search) || 
+                       (r.ci || '').includes(searchTerm) ||
+                       (r.telefono || '').includes(searchTerm) ||
+                       (r.rubro || '').toLowerCase().includes(search) ||
+                       (r.agente || '').toLowerCase().includes(search);
       if (selectedMonth === 'all') return matchText;
       const [targetYear, targetMonth] = selectedMonth.split('-').map(Number);
       const recordDate = parseFlexibleDate(r.fecha);
@@ -136,13 +156,7 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
   const metrics = useMemo(() => {
     const dailyCounts: Record<string, number> = {};
     const rubros: Record<string, number> = {};
-    if (selectedMonth !== 'all') {
-      const [year, monthStr] = selectedMonth.split('-').map(Number);
-      const daysInMonth = new Date(year, monthStr, 0).getDate();
-      for (let d = 1; d <= daysInMonth; d++) {
-        dailyCounts[`${year}-${String(monthStr).padStart(2, '0')}-${String(d).padStart(2, '0')}`] = 0;
-      }
-    }
+    
     filtered.forEach(r => {
       const rName = (r.rubro || 'OTROS').toUpperCase().trim();
       rubros[rName] = (rubros[rName] || 0) + 1;
@@ -152,22 +166,23 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
         dailyCounts[key] = (dailyCounts[key] || 0) + 1;
       }
     });
+
     const seriesData = Object.entries(dailyCounts).map(([date, value]) => ({
       date,
       dayLabel: selectedMonth === 'all' ? date.split('-').slice(1).reverse().join('/') : parseInt(date.split('-')[2]),
       value
     })).sort((a,b) => a.date.localeCompare(b.date));
-    const uniqueDays = Object.keys(dailyCounts).length || 1;
+
     const sortedRubros = Object.entries(rubros).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value);
+    
     return {
       total: filtered.length,
-      promedio: (filtered.length / uniqueDays).toFixed(1),
       lider: sortedRubros[0]?.name || 'N/A',
       rubrosData: sortedRubros.map(item => ({
         ...item,
-        percent: (item.value / (sortedRubros[0]?.value || 1)) * 100
+        percent: (item.value / (filtered.length || 1)) * 100
       })).slice(0, 8),
-      seriesData: selectedMonth === 'all' ? seriesData.slice(-30) : seriesData
+      seriesData: selectedMonth === 'all' ? seriesData.slice(-15) : seriesData
     };
   }, [filtered, selectedMonth]);
 
@@ -223,106 +238,74 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
         </div>
       </div>
 
-      {/* Métricas Principales */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {[
-          { label: selectedMonth === 'all' ? 'Total Histórico' : 'Clientes en Periodo', val: metrics.total, color: 'text-green-500', bg: 'bg-green-500/5' },
-          { label: 'Promedio Ingesta Diaria', val: metrics.promedio, color: 'text-blue-500', bg: 'bg-blue-500/5' },
-          { label: 'Rubro Predominante', val: metrics.lider, color: 'text-purple-500', bg: 'bg-purple-500/5' }
-        ].map((m, i) => (
-          <div key={i} className="bg-[#121212] p-12 rounded-[3rem] border border-white/5 shadow-2xl relative overflow-hidden group hover:scale-[1.02] transition-all">
-            <div className={`absolute top-0 right-0 w-32 h-32 ${m.bg} rounded-full -mr-16 -mt-16 opacity-50`}></div>
-            <p className="text-gray-500 text-[11px] font-black uppercase tracking-[0.3em] mb-4">{m.label}</p>
-            <h4 className={`text-7xl font-black ${m.color} tracking-tighter truncate uppercase italic`}>{m.val}</h4>
-          </div>
-        ))}
-      </div>
-
-      {/* Gráficos de Referencia Visual */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        {/* ÚLTIMA ACTIVIDAD (Gráfico de área suave) */}
-        <div className="bg-[#0c0c0c] p-12 rounded-[3.5rem] border border-white/5 shadow-2xl h-[600px] relative overflow-hidden flex flex-col">
-          <div className="flex items-center gap-6 mb-20 relative z-10">
-            <div className="w-14 h-14 bg-blue-500/10 rounded-2xl border border-blue-500/20 flex items-center justify-center">
-              <BarChart3 size={28} className="text-blue-500" />
+      {/* Seccion de Graficas (Arriba) */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+        {/* Gráfico 1: Última Actividad */}
+        <div className="bg-[#121212] p-10 rounded-[3.5rem] border border-white/5 shadow-2xl flex flex-col h-[550px]">
+          <div className="flex items-center gap-6 mb-12">
+            <div className="w-14 h-14 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500 border border-blue-500/20 shadow-lg shadow-blue-500/5">
+              <Activity size={24} />
             </div>
-            <h3 className="text-4xl font-black text-white uppercase italic tracking-tighter">ÚLTIMA ACTIVIDAD</h3>
+            <div>
+              <h3 className="text-3xl font-black text-white tracking-tight uppercase italic">Última Actividad</h3>
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-1">Tendencia de Ingreso de Datos</p>
+            </div>
           </div>
-          
-          <div className="flex-1 w-full relative z-10">
+          <div className="flex-1 w-full min-h-0">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={metrics.seriesData} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
+              <AreaChart data={metrics.seriesData}>
                 <defs>
                   <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff03" />
                 <XAxis 
                   dataKey="dayLabel" 
-                  axisLine={false} 
+                  stroke="#444" 
+                  fontSize={10} 
                   tickLine={false} 
-                  tick={{fill: '#444', fontSize: 11, fontWeight: 900}} 
-                  dy={20}
-                />
-                <YAxis 
                   axisLine={false} 
-                  tickLine={false} 
-                  tick={{fill: '#444', fontSize: 11, fontWeight: 900}} 
+                  fontWeight="bold"
                 />
                 <Tooltip 
-                  content={({ active, payload }: any) => {
-                    if (active && payload && payload.length) {
-                      return (
-                        <div className="bg-[#121212] p-5 rounded-3xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">{payload[0].payload.date}</p>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-black text-blue-500">CARGA:</span>
-                            <span className="text-sm font-black text-white">{payload[0].value} <span className="text-[10px] text-gray-600 italic">Leads</span></span>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
+                  contentStyle={{ backgroundColor: '#121212', border: 'none', borderRadius: '16px', boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}
+                  itemStyle={{ color: '#3b82f6', fontWeight: 'bold' }}
                 />
                 <Area 
                   type="monotone" 
                   dataKey="value" 
                   stroke="#3b82f6" 
-                  strokeWidth={6} 
                   fillOpacity={1} 
                   fill="url(#colorValue)" 
-                  animationDuration={2000} 
+                  strokeWidth={4} 
+                  animationDuration={1500}
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* SEGMENTOS POR RUBRO (Gráfico de Dona y Barras) */}
-        <div className="bg-[#0c0c0c] p-12 rounded-[3.5rem] border border-white/5 shadow-2xl h-[600px] flex flex-col relative overflow-hidden">
-          <div className="flex items-center gap-6 mb-12 relative z-10">
-            <div className="w-14 h-14 bg-purple-500/10 rounded-2xl border border-purple-500/20 flex items-center justify-center">
-              <PieChartIcon size={28} className="text-purple-500" />
+        {/* Gráfico 2: Segmentos por Rubro */}
+        <div className="bg-[#121212] p-10 rounded-[3.5rem] border border-white/5 shadow-2xl flex flex-col h-[550px]">
+          <div className="flex items-center gap-6 mb-12">
+            <div className="w-14 h-14 bg-purple-500/10 rounded-2xl flex items-center justify-center text-purple-500 border border-purple-500/20 shadow-lg shadow-purple-500/5">
+              <PieChartIcon size={24} />
             </div>
-            <h3 className="text-4xl font-black text-white uppercase italic tracking-tighter">SEGMENTOS POR RUBRO</h3>
+            <div>
+              <h3 className="text-3xl font-black text-white tracking-tight uppercase italic">Segmentos por Rubro</h3>
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-1">Distribución de Cartera</p>
+            </div>
           </div>
-          
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-12 flex-1 relative z-10">
-            {/* Gráfico de Dona Central */}
-            <div className="w-full lg:w-1/2 h-[350px] relative">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-10 flex-1 min-h-0 overflow-hidden">
+            <div className="h-full w-full md:w-1/2 relative flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={metrics.rubrosData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={80}
-                    outerRadius={135}
-                    paddingAngle={6}
+                    innerRadius="60%"
+                    outerRadius="95%"
+                    paddingAngle={5}
                     dataKey="value"
                     stroke="none"
                   >
@@ -330,38 +313,30 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
                       <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#121212', border: 'none', borderRadius: '20px' }}
-                    itemStyle={{ color: '#fff', fontSize: '11px', fontWeight: 'bold' }}
-                  />
+                  <Tooltip contentStyle={{ backgroundColor: '#121212', border: 'none', borderRadius: '12px' }} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                 <span className="text-[11px] font-black text-gray-600 uppercase tracking-widest mb-1">TOTAL</span>
-                 <span className="text-5xl font-black text-white tracking-tighter">{metrics.total}</span>
+                <span className="text-[10px] font-black text-gray-600 uppercase tracking-[0.3em]">TOTAL</span>
+                <span className="text-5xl font-black text-white">{metrics.total}</span>
               </div>
             </div>
-
-            {/* Listado de Barras de Progreso Lateral */}
-            <div className="w-full lg:w-1/2 overflow-y-auto custom-scrollbar pr-4 space-y-6 max-h-[400px]">
-              {metrics.rubrosData.map((rubro, idx) => (
-                <div key={idx} className="space-y-2 group">
+            <div className="w-full md:w-1/2 space-y-4 overflow-y-auto custom-scrollbar pr-2 max-h-[350px]">
+              {metrics.rubrosData.map((item, i) => (
+                <div key={i} className="flex flex-col gap-1">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: CHART_COLORS[idx % CHART_COLORS.length] }}></div>
-                      <span className="text-[12px] font-black text-gray-500 uppercase tracking-widest group-hover:text-white transition-colors">
-                        {rubro.name}
-                      </span>
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}></div>
+                      <span className="text-[11px] font-black text-white uppercase tracking-widest">{item.name}</span>
                     </div>
-                    <span className="text-sm font-black text-white">{rubro.value}</span>
+                    <span className="text-[11px] font-black text-gray-500">{item.value}</span>
                   </div>
-                  <div className="relative h-2.5 w-full bg-white/5 rounded-full overflow-hidden">
+                  <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                     <div 
-                      className="absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ease-out"
+                      className="h-full rounded-full transition-all duration-1000" 
                       style={{ 
-                        width: `${rubro.percent}%`, 
-                        backgroundColor: CHART_COLORS[idx % CHART_COLORS.length],
-                        boxShadow: `0 0 15px ${CHART_COLORS[idx % CHART_COLORS.length]}40`
+                        width: `${item.percent}%`, 
+                        backgroundColor: CHART_COLORS[i % CHART_COLORS.length] 
                       }}
                     ></div>
                   </div>
@@ -372,15 +347,15 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
         </div>
       </div>
 
-      {/* Buscador de Tabla con Diseño mejorado */}
-      <div className="bg-[#121212] p-10 rounded-[3rem] border border-white/5 flex flex-col md:flex-row items-center justify-between gap-8 shadow-xl">
+      {/* Buscador de Tabla */}
+      <div className="bg-[#121212] p-10 rounded-[3rem] border border-white/5 flex flex-col md:flex-row items-center justify-between gap-8 shadow-xl mt-12">
         <div className="flex items-center gap-6 w-full md:w-auto">
            <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-gray-500">
              <Search size={24} />
            </div>
            <input 
              type="text"
-             placeholder="BUSCAR POR NOMBRE, CI O RUBRO EN LA BASE DE DATOS..."
+             placeholder="BUSCAR POR CI, TELÉFONO, RUBRO O AGENTE..."
              value={searchTerm}
              onChange={(e) => setSearchTerm(e.target.value)}
              className="bg-transparent text-sm text-white font-bold uppercase tracking-widest focus:outline-none w-full md:w-[600px] placeholder:text-gray-800"
@@ -399,11 +374,12 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="text-[11px] text-gray-700 uppercase tracking-widest border-b border-white/5 bg-black/30">
-                <th className="py-10 px-12">ESTADO / ORIGEN</th>
-                <th className="py-10">DOCUMENTO IDENTIDAD</th>
-                <th className="py-10">CONTACTO / NOMBRE</th>
-                <th className="py-10">CATEGORÍA</th>
-                <th className="py-10 px-12 text-right">AGENTE ASIGNADO</th>
+                <th className="py-10 px-12">ORIGEN</th>
+                <th className="py-10">CI / DOCUMENTO</th>
+                <th className="py-10">TELÉFONO</th>
+                <th className="py-10">RUBRO / INTERÉS</th>
+                <th className="py-10">AGENTE RESPONSABLE</th>
+                <th className="py-10 px-12 text-right">FECHA</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
@@ -412,25 +388,44 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
                   <td className="py-10 px-12">
                     <div className="flex items-center gap-3">
                       <div className={`w-2 h-2 rounded-full ${r.source === 'supabase' ? 'bg-purple-500 animate-pulse' : 'bg-green-500'}`}></div>
-                      <span className={`text-[10px] font-black uppercase tracking-widest ${r.source === 'supabase' ? 'text-purple-400' : 'text-green-500'}`}>
-                        {r.source === 'supabase' ? 'DATABASE CORE' : 'CLOUD SYNC'}
+                      <span className={`text-[9px] font-black uppercase tracking-widest ${r.source === 'supabase' ? 'text-purple-400' : 'text-green-500'}`}>
+                        {r.source === 'supabase' ? 'DATABASE' : 'SHEETS'}
                       </span>
                     </div>
                   </td>
-                  <td className="py-10 font-bold text-white tracking-tighter text-lg">{r.ci}</td>
                   <td className="py-10">
-                    <div className="flex flex-col">
-                      <span className="text-base font-bold text-gray-300 group-hover:text-white transition-colors">{r.contacto}</span>
-                      <span className="text-[10px] text-gray-700 font-black uppercase tracking-widest mt-2 italic">{r.fecha}</span>
+                    <div className="flex items-center gap-3">
+                      <User size={14} className="text-gray-600" />
+                      <span className="font-bold text-white tracking-tighter text-lg">{r.ci}</span>
                     </div>
                   </td>
                   <td className="py-10">
-                    <span className="text-[11px] font-black text-gray-500 uppercase tracking-[0.2em] bg-white/5 px-4 py-2 rounded-xl border border-white/10 group-hover:border-purple-500/20 group-hover:text-purple-300 transition-all">
-                      {r.rubro}
-                    </span>
+                    <div className="flex items-center gap-3 text-green-500">
+                      <Phone size={14} />
+                      <span className="text-base font-black tracking-tight">{r.telefono || 'SIN TELÉFONO'}</span>
+                    </div>
                   </td>
-                  <td className="py-10 px-12 text-right font-black text-white uppercase text-[12px] italic tracking-tight">
-                    {r.agente}
+                  <td className="py-10">
+                    <div className="flex items-center gap-3">
+                      <Briefcase size={14} className="text-gray-600" />
+                      <span className="text-[11px] font-black text-gray-300 uppercase tracking-[0.2em] bg-white/5 px-4 py-2 rounded-xl border border-white/10 group-hover:border-purple-500/20 transition-all">
+                        {r.rubro}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="py-10">
+                    <div className="flex items-center gap-3">
+                      <UserCheck size={14} className="text-purple-500" />
+                      <span className="text-[12px] font-black text-white uppercase italic tracking-tight">
+                        {r.agente}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="py-10 px-12 text-right">
+                    <div className="flex items-center justify-end gap-3 text-gray-500">
+                      <Calendar size={14} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">{r.fecha}</span>
+                    </div>
                   </td>
                 </tr>
               ))}

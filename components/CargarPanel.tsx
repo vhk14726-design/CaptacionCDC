@@ -12,7 +12,8 @@ import {
   FileSpreadsheet,
   ArrowUpCircle,
   ShieldCheck,
-  Edit3
+  Edit3,
+  Phone
 } from 'lucide-react';
 
 // URL Proporcionada por el usuario
@@ -25,6 +26,7 @@ const CargarPanel: React.FC = () => {
   
   const [formData, setFormData] = useState({
     ci: '',
+    telefono: '',
     rubro: '',
     fecha: new Date().toISOString().split('T')[0],
     agente: ''
@@ -41,6 +43,14 @@ const CargarPanel: React.FC = () => {
     'JUBILADO/A'
   ];
 
+  const agentesPredefinidos = [
+    'Leidy',
+    'Javier',
+    'Ivana',
+    'Gabriela',
+    'Nicol'
+  ];
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
@@ -54,8 +64,8 @@ const CargarPanel: React.FC = () => {
     
     const finalRubro = formData.rubro === 'OTROS' ? otroRubro : formData.rubro;
 
-    if (!formData.ci || !finalRubro || !formData.fecha || !formData.agente) {
-      setStatus({ type: 'error', message: 'Campos incompletos', detail: 'Todos los campos son obligatorios para el registro centralizado.' });
+    if (!formData.ci || !formData.telefono || !finalRubro || !formData.fecha || !formData.agente) {
+      setStatus({ type: 'error', message: 'Campos incompletos', detail: 'Todos los campos incluyendo el teléfono son obligatorios.' });
       return;
     }
 
@@ -63,10 +73,12 @@ const CargarPanel: React.FC = () => {
     setStatus(null);
 
     try {
+      const fullPhone = `+595${formData.telefono.trim()}`;
       const params = new URLSearchParams();
       params.append('ci', formData.ci.trim());
-      // Como se quitó el nombre del cliente, usamos la CI como identificador de contacto
-      params.append('contacto', `CLIENTE_${formData.ci.trim()}`);
+      // Enviamos el teléfono dentro del contacto y también como parámetro extra si el script lo soporta
+      params.append('contacto', `CLIENTE_${formData.ci.trim()} | TEL: ${fullPhone}`);
+      params.append('telefono', fullPhone);
       params.append('rubro', finalRubro.trim().toUpperCase());
       params.append('fecha', formData.fecha);
       params.append('agente', formData.agente.trim().toUpperCase());
@@ -88,6 +100,7 @@ const CargarPanel: React.FC = () => {
       
       setFormData({
         ci: '',
+        telefono: '',
         rubro: '',
         fecha: new Date().toISOString().split('T')[0],
         agente: ''
@@ -99,7 +112,7 @@ const CargarPanel: React.FC = () => {
       setStatus({ 
         type: 'error', 
         message: 'Error de Sincronización',
-        detail: 'No se pudo conectar con la base de datos de Google Sheets. Verifica tu conexión.'
+        detail: 'No se pudo conectar con la base de datos de Google Sheets.'
       });
     } finally {
       setLoading(false);
@@ -169,19 +182,48 @@ const CargarPanel: React.FC = () => {
             </div>
 
             <div className="space-y-3">
+              <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Número de Teléfono</label>
+              <div className="relative group flex">
+                <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-green-500 transition-colors z-10">
+                  <Phone size={18} />
+                </div>
+                <div className="absolute left-12 top-1/2 -translate-y-1/2 text-green-500 font-black text-sm pointer-events-none z-10">
+                  +595
+                </div>
+                <input 
+                  type="tel"
+                  name="telefono"
+                  value={formData.telefono}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, ''); // Solo números
+                    setFormData(prev => ({ ...prev, telefono: val }));
+                  }}
+                  placeholder="981 123456"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-24 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-800 font-bold"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
               <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Agente Responsable</label>
               <div className="relative group">
                 <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-green-500 transition-colors">
                   <UserCheck size={18} />
                 </div>
-                <input 
-                  type="text"
+                <select 
                   name="agente"
                   value={formData.agente}
                   onChange={handleChange}
-                  placeholder="Tu nombre completo"
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-700 font-bold"
-                />
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-10 text-sm text-white focus:outline-none focus:border-green-500 transition-all appearance-none cursor-pointer font-bold"
+                >
+                  <option value="">Seleccione agente...</option>
+                  {agentesPredefinidos.map(agente => (
+                    <option key={agente} value={agente}>{agente}</option>
+                  ))}
+                </select>
+                <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-500">
+                  <ArrowUpCircle size={16} className="rotate-180" />
+                </div>
               </div>
             </div>
 
