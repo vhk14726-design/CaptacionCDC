@@ -6,7 +6,6 @@ import {
   RefreshCw, 
   Database,
   ShieldCheck,
-  BarChart3,
   ChevronDown,
   Globe,
   PieChart as PieChartIcon,
@@ -15,13 +14,14 @@ import {
   Calendar,
   Briefcase,
   UserCheck,
-  TrendingUp,
-  Activity
+  Activity,
+  AlertTriangle,
+  FilterX,
+  CheckCircle2
 } from 'lucide-react';
 import { 
   XAxis, 
   YAxis, 
-  CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
   AreaChart,
@@ -32,17 +32,11 @@ import {
 } from 'recharts';
 import { supabase } from '../supabase.ts';
 
-const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbwWiU0msCle-8cRWGPxO4IGilOR5sFnJgfiVy_x00QhH8kDRyPSTZVMaYtlyDJBaPiQ/exec';
+// URL de la implementación de Google Sheets
+const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzffCE6i9aLH2Wmo2R64kYBxMhZmENUoJR1pHVYxbeD5OMdA-yIvqxNVGcaaL-B-v31/exec';
 
 const CHART_COLORS = [
-  '#9333ea', // MEC (Púrpura)
-  '#3b82f6', // SALUD (Azul)
-  '#ec4899', // POLICIA (Rosa)
-  '#10b981', // MILITAR (Verde)
-  '#f59e0b', // FFAA (Naranja)
-  '#6366f1', // IPS (Indigo)
-  '#8b5cf6', // UNA (Violeta)
-  '#d946ef'  // JUBILADA (Fucsia)
+  '#9333ea', '#3b82f6', '#ec4899', '#10b981', '#f59e0b', '#6366f1', '#8b5cf6', '#d946ef'
 ];
 
 interface StandardizedRecord {
@@ -64,6 +58,10 @@ const parseFlexibleDate = (dateVal: any): Date | null => {
     }
   }
   const strDate = String(dateVal).trim();
+  const yyyymmdd = strDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (yyyymmdd) {
+    return new Date(parseInt(yyyymmdd[1]), parseInt(yyyymmdd[2]) - 1, parseInt(yyyymmdd[3]));
+  }
   const ddmmyyyy = strDate.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
   if (ddmmyyyy) {
     return new Date(parseInt(ddmmyyyy[3]), parseInt(ddmmyyyy[2]) - 1, parseInt(ddmmyyyy[1]));
@@ -72,62 +70,100 @@ const parseFlexibleDate = (dateVal: any): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+const formatDisplayDate = (val: any) => {
+  const d = parseFlexibleDate(val);
+  if (!d) return String(val || 'N/A');
+  return d.toLocaleDateString('es-PY', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
 const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [records, setRecords] = useState<StandardizedRecord[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState('all');
-  
-  const isAdmin = userRole === 'admin';
 
   const fetchData = async (silent = false) => {
-    if (!silent) setIsSyncing(true);
+    if (!silent) {
+      setIsSyncing(true);
+      setError(null);
+    }
     try {
       const uniqueRecordsMap = new Map<string, StandardizedRecord>();
+      
+      // 1. Supabase (Opcional si lo usas)
       if (supabase) {
-        const { data: sbData, error: sbError } = await supabase
-          .from('prospectos')
-          .select('*')
-          .order('id', { ascending: false });
-        if (!sbError && sbData) {
-          sbData.forEach(item => {
-            const cleanCI = String(item.ci || '').trim();
-            if (cleanCI) {
-              let phone = item.telefono || '';
-              if (!phone && item.contacto?.includes('TEL:')) {
-                phone = item.contacto.split('TEL:')[1].trim();
-              }
-              uniqueRecordsMap.set(cleanCI, { ...item, telefono: phone, source: 'supabase' });
-            }
-          });
-        }
+        try {
+          const { data: sbData } = await supabase.from('prospectos').select('*');
+          if (sbData) {
+            sbData.forEach(item => {
+              const ci = String(item.ci || '').trim();
+              if (ci) uniqueRecordsMap.set(ci, { ...item, source: 'supabase' });
+            });
+          }
+        } catch (e) {}
       }
+
+      // 2. Google Sheets con Bypass de Caché
       try {
-        const res = await fetch(GOOGLE_SHEETS_URL);
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          data.forEach((item: any) => {
-            const cleanCI = String(item.ci || '').trim();
-            if (cleanCI && !uniqueRecordsMap.has(cleanCI)) {
+        const cacheBuster = `?t=${Date.now()}`;
+        const res = await fetch(GOOGLE_SHEETS_URL + cacheBuster);
+        const rawData = await res.json();
+        
+        const sheetItems = Array.isArray(rawData) ? rawData : (rawData.data || rawData.content || []);
+        
+        if (Array.isArray(sheetItems)) {
+          sheetItems.forEach((item: any, idx: number) => {
+            // MAPEO DINÁMICO: Soporta "Columna 1" o nombres limpios como "ci"
+            const ci = String(item.ci || item['Columna 1'] || item[0] || '').trim();
+            const contacto = String(item.contacto || item['Columna 2'] || item[1] || '');
+            const rubro = String(item.rubro || item['Columna 3'] || item[2] || '');
+            const fecha = String(item.fecha || item['Columna 4'] || item[3] || '');
+            const agente = String(item.agente || item['Columna 5'] || item[4] || '');
+            
+            // Verificación estricta para no saltar datos reales
+            if (ci && ci !== "" && !ci.toLowerCase().includes("columna") && ci.toLowerCase() !== "ci") {
               let phone = item.telefono || '';
-              if (!phone && item.contacto?.includes('TEL:')) {
-                phone = item.contacto.split('TEL:')[1].trim();
+              if (!phone && contacto.includes('TEL:')) {
+                const parts = contacto.split('TEL:');
+                if (parts.length > 1) phone = parts[1].trim().replace(/\s/g, '');
               }
-              uniqueRecordsMap.set(cleanCI, {
-                ci: cleanCI,
-                contacto: String(item.contacto || ''),
+              
+              // Usamos CI + Agente como clave única para evitar duplicados si hay recargas
+              const uniqueKey = `${ci}-${agente.replace(/\s/g, '')}`;
+              uniqueRecordsMap.set(uniqueKey, {
+                ci,
+                contacto,
                 telefono: phone,
-                rubro: String(item.rubro || ''),
-                fecha: String(item.fecha || ''),
-                agente: String(item.agente || ''),
+                rubro: rubro.toUpperCase() || 'GENERAL',
+                fecha,
+                agente: agente.toUpperCase() || 'SISTEMA',
                 source: 'sheets'
               });
             }
           });
         }
-      } catch (e) { console.warn("Sheets fetch failed"); }
-      setRecords(Array.from(uniqueRecordsMap.values()));
-    } catch (err: any) { console.error("Sync error", err); } finally { if (!silent) setIsSyncing(false); }
+        setLastSync(new Date().toLocaleTimeString());
+      } catch (e: any) { 
+        console.error("Sheets fetch fail", e);
+        if (!silent) setError("Error al conectar con Google Sheets.");
+      }
+      
+      const finalRecords = Array.from(uniqueRecordsMap.values());
+      // Ordenar por fecha descendente (asumiendo que los más nuevos están al final o tienen fecha mayor)
+      finalRecords.sort((a, b) => {
+        const dA = parseFlexibleDate(a.fecha)?.getTime() || 0;
+        const dB = parseFlexibleDate(b.fecha)?.getTime() || 0;
+        return dB - dA;
+      });
+
+      setRecords(finalRecords);
+    } catch (err: any) { 
+      console.error("Global sync error", err); 
+    } finally { 
+      if (!silent) setIsSyncing(false); 
+    }
   };
 
   useEffect(() => {
@@ -139,12 +175,14 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
 
   const filtered = useMemo(() => {
     return records.filter(r => {
-      const search = searchTerm.toLowerCase();
-      const matchText = (r.contacto || '').toLowerCase().includes(search) || 
-                       (r.ci || '').includes(searchTerm) ||
-                       (r.telefono || '').includes(searchTerm) ||
+      const search = searchTerm.toLowerCase().trim();
+      const matchText = !search || 
+                       (r.contacto || '').toLowerCase().includes(search) || 
+                       (r.ci || '').includes(search) ||
+                       (r.telefono || '').includes(search) ||
                        (r.rubro || '').toLowerCase().includes(search) ||
                        (r.agente || '').toLowerCase().includes(search);
+      
       if (selectedMonth === 'all') return matchText;
       const [targetYear, targetMonth] = selectedMonth.split('-').map(Number);
       const recordDate = parseFlexibleDate(r.fecha);
@@ -169,7 +207,7 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
 
     const seriesData = Object.entries(dailyCounts).map(([date, value]) => ({
       date,
-      dayLabel: selectedMonth === 'all' ? date.split('-').slice(1).reverse().join('/') : parseInt(date.split('-')[2]),
+      dayLabel: date.split('-').slice(1).reverse().join('/'),
       value
     })).sort((a,b) => a.date.localeCompare(b.date));
 
@@ -177,40 +215,37 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
     
     return {
       total: filtered.length,
-      lider: sortedRubros[0]?.name || 'N/A',
       rubrosData: sortedRubros.map(item => ({
         ...item,
         percent: (item.value / (filtered.length || 1)) * 100
       })).slice(0, 8),
-      seriesData: selectedMonth === 'all' ? seriesData.slice(-15) : seriesData
+      seriesData: seriesData.slice(-15)
     };
-  }, [filtered, selectedMonth]);
-
-  const monthOptions = [
-    { label: 'Enero', value: '01' }, { label: 'Febrero', value: '02' }, { label: 'Marzo', value: '03' },
-    { label: 'Abril', value: '04' }, { label: 'Mayo', value: '05' }, { label: 'Junio', value: '06' },
-    { label: 'Julio', value: '07' }, { label: 'Agosto', value: '08' }, { label: 'Septiembre', value: '09' },
-    { label: 'Octubre', value: '10' }, { label: 'Noviembre', value: '11' }, { label: 'Diciembre', value: '12' }
-  ];
+  }, [filtered]);
 
   return (
     <div className="space-y-12 animate-in fade-in duration-1000 pb-32">
-      {/* Header Clientes */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div className="space-y-2">
           <h2 className="text-7xl font-black text-white tracking-tighter uppercase italic">Clientes</h2>
           <div className="flex items-center gap-4">
             <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] flex items-center gap-2">
-              <ShieldCheck size={12} className="text-purple-500" /> CENTRALIZED DATA CORE
+              <ShieldCheck size={12} className="text-purple-500" /> DATA CENTRAL SYNC
             </p>
-            <div className="px-4 py-1 bg-purple-500/10 border border-purple-500/20 rounded-full">
+            <div className="px-4 py-1 bg-purple-500/10 border border-purple-500/20 rounded-full flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></div>
               <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest">
-                {records.length} TOTAL REGISTROS IDENTIFICADOS
+                {filtered.length} REGISTROS EN LISTA
               </span>
             </div>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-4">
+           {lastSync && (
+             <span className="text-[9px] font-black text-gray-700 uppercase tracking-widest mr-4">
+               Sincronizado: {lastSync}
+             </span>
+           )}
            <div className="relative min-w-[280px]">
              <Globe size={14} className="absolute left-5 top-1/2 -translate-y-1/2 text-purple-500 z-10" />
              <select 
@@ -219,11 +254,9 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
                className="bg-[#121212] border border-white/5 rounded-2xl py-4 pl-14 pr-10 text-[11px] font-black text-white uppercase tracking-widest appearance-none cursor-pointer focus:outline-none focus:border-purple-500 transition-all w-full"
              >
                <option value="all">🌐 TODOS LOS TIEMPOS</option>
-               <optgroup label="Filtrado Mensual (2025)">
-                 {monthOptions.map(m => (
-                   <option key={m.value} value={`2025-${m.value}`}>{m.label}</option>
-                 ))}
-               </optgroup>
+               {["2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"].map(m => (
+                 <option key={m} value={m}>{m}</option>
+               ))}
              </select>
              <ChevronDown size={14} className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
            </div>
@@ -238,17 +271,22 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
         </div>
       </div>
 
-      {/* Seccion de Graficas (Arriba) */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-[2rem] flex items-center gap-4 text-red-500 animate-in zoom-in-95">
+          <AlertTriangle size={24} />
+          <p className="text-xs font-black uppercase tracking-widest">{error}</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        {/* Gráfico 1: Última Actividad */}
         <div className="bg-[#121212] p-10 rounded-[3.5rem] border border-white/5 shadow-2xl flex flex-col h-[550px]">
           <div className="flex items-center gap-6 mb-12">
             <div className="w-14 h-14 bg-blue-500/10 rounded-2xl flex items-center justify-center text-blue-500 border border-blue-500/20 shadow-lg shadow-blue-500/5">
               <Activity size={24} />
             </div>
             <div>
-              <h3 className="text-3xl font-black text-white tracking-tight uppercase italic">Última Actividad</h3>
-              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-1">Tendencia de Ingreso de Datos</p>
+              <h3 className="text-3xl font-black text-white tracking-tight uppercase italic">Actividad de Carga</h3>
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-1">Historial de captación</p>
             </div>
           </div>
           <div className="flex-1 w-full min-h-0">
@@ -260,55 +298,29 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <XAxis 
-                  dataKey="dayLabel" 
-                  stroke="#444" 
-                  fontSize={10} 
-                  tickLine={false} 
-                  axisLine={false} 
-                  fontWeight="bold"
-                />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#121212', border: 'none', borderRadius: '16px', boxShadow: '0 20px 40px rgba(0,0,0,0.4)' }}
-                  itemStyle={{ color: '#3b82f6', fontWeight: 'bold' }}
-                />
-                <Area 
-                  type="monotone" 
-                  dataKey="value" 
-                  stroke="#3b82f6" 
-                  fillOpacity={1} 
-                  fill="url(#colorValue)" 
-                  strokeWidth={4} 
-                  animationDuration={1500}
-                />
+                <XAxis dataKey="dayLabel" stroke="#444" fontSize={10} tickLine={false} axisLine={false} fontWeight="bold" />
+                <Tooltip contentStyle={{ backgroundColor: '#121212', border: 'none', borderRadius: '16px' }} />
+                <Area type="monotone" dataKey="value" stroke="#3b82f6" fillOpacity={1} fill="url(#colorValue)" strokeWidth={4} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Gráfico 2: Segmentos por Rubro */}
         <div className="bg-[#121212] p-10 rounded-[3.5rem] border border-white/5 shadow-2xl flex flex-col h-[550px]">
           <div className="flex items-center gap-6 mb-12">
             <div className="w-14 h-14 bg-purple-500/10 rounded-2xl flex items-center justify-center text-purple-500 border border-purple-500/20 shadow-lg shadow-purple-500/5">
               <PieChartIcon size={24} />
             </div>
             <div>
-              <h3 className="text-3xl font-black text-white tracking-tight uppercase italic">Segmentos por Rubro</h3>
-              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-1">Distribución de Cartera</p>
+              <h3 className="text-3xl font-black text-white tracking-tight uppercase italic">Distribución</h3>
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mt-1">Rubros captados</p>
             </div>
           </div>
-          <div className="flex flex-col md:flex-row items-center justify-between gap-10 flex-1 min-h-0 overflow-hidden">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-10 flex-1 min-h-0">
             <div className="h-full w-full md:w-1/2 relative flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie
-                    data={metrics.rubrosData}
-                    innerRadius="60%"
-                    outerRadius="95%"
-                    paddingAngle={5}
-                    dataKey="value"
-                    stroke="none"
-                  >
+                  <Pie data={metrics.rubrosData} innerRadius="60%" outerRadius="95%" paddingAngle={5} dataKey="value" stroke="none">
                     {metrics.rubrosData.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                     ))}
@@ -332,13 +344,7 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
                     <span className="text-[11px] font-black text-gray-500">{item.value}</span>
                   </div>
                   <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full rounded-full transition-all duration-1000" 
-                      style={{ 
-                        width: `${item.percent}%`, 
-                        backgroundColor: CHART_COLORS[i % CHART_COLORS.length] 
-                      }}
-                    ></div>
+                    <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${item.percent}%`, backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}></div>
                   </div>
                 </div>
               ))}
@@ -347,7 +353,6 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
         </div>
       </div>
 
-      {/* Buscador de Tabla */}
       <div className="bg-[#121212] p-10 rounded-[3rem] border border-white/5 flex flex-col md:flex-row items-center justify-between gap-8 shadow-xl mt-12">
         <div className="flex items-center gap-6 w-full md:w-auto">
            <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-gray-500">
@@ -358,83 +363,92 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
              placeholder="BUSCAR POR CI, TELÉFONO, RUBRO O AGENTE..."
              value={searchTerm}
              onChange={(e) => setSearchTerm(e.target.value)}
-             className="bg-transparent text-sm text-white font-bold uppercase tracking-widest focus:outline-none w-full md:w-[600px] placeholder:text-gray-800"
+             className="bg-transparent text-sm text-white font-black uppercase tracking-widest focus:outline-none w-full md:w-[600px] placeholder:text-gray-800"
            />
         </div>
         <div className="px-8 py-3 bg-white/5 rounded-2xl border border-white/5">
           <span className="text-[11px] font-black text-gray-500 uppercase tracking-widest">
-            {filtered.length} RESULTADOS FILTRADOS
+            {filtered.length} RESULTADOS ENCONTRADOS
           </span>
         </div>
       </div>
 
-      {/* Tabla Centralizada */}
       <div className="bg-[#121212] rounded-[3.5rem] border border-white/5 shadow-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="text-[11px] text-gray-700 uppercase tracking-widest border-b border-white/5 bg-black/30">
-                <th className="py-10 px-12">ORIGEN</th>
-                <th className="py-10">CI / DOCUMENTO</th>
+              <tr className="text-[11px] text-gray-700 uppercase tracking-[0.2em] border-b border-white/5 bg-black/30">
+                <th className="py-10 px-12">ESTADO</th>
+                <th className="py-10">DOCUMENTO</th>
                 <th className="py-10">TELÉFONO</th>
-                <th className="py-10">RUBRO / INTERÉS</th>
-                <th className="py-10">AGENTE RESPONSABLE</th>
+                <th className="py-10">RUBRO</th>
+                <th className="py-10">ASESOR</th>
                 <th className="py-10 px-12 text-right">FECHA</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {filtered.slice(0, 100).map((r) => (
-                <tr key={r.ci} className="group hover:bg-white/5 transition-all">
+              {filtered.map((r, idx) => (
+                <tr key={`${r.ci}-${idx}`} className="group hover:bg-white/5 transition-all">
                   <td className="py-10 px-12">
                     <div className="flex items-center gap-3">
-                      <div className={`w-2 h-2 rounded-full ${r.source === 'supabase' ? 'bg-purple-500 animate-pulse' : 'bg-green-500'}`}></div>
-                      <span className={`text-[9px] font-black uppercase tracking-widest ${r.source === 'supabase' ? 'text-purple-400' : 'text-green-500'}`}>
-                        {r.source === 'supabase' ? 'DATABASE' : 'SHEETS'}
+                      <div className={`w-1.5 h-1.5 rounded-full ${r.source === 'sheets' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]'}`}></div>
+                      <span className={`text-[10px] font-black uppercase tracking-widest ${r.source === 'sheets' ? 'text-green-500' : 'text-purple-400'}`}>
+                        {r.source === 'sheets' ? 'SYNC_SHEETS' : 'DB_PERSISTED'}
                       </span>
                     </div>
                   </td>
                   <td className="py-10">
                     <div className="flex items-center gap-3">
                       <User size={14} className="text-gray-600" />
-                      <span className="font-bold text-white tracking-tighter text-lg">{r.ci}</span>
+                      <span className="font-bold text-white tracking-tight text-lg">{r.ci}</span>
                     </div>
                   </td>
                   <td className="py-10">
                     <div className="flex items-center gap-3 text-green-500">
                       <Phone size={14} />
-                      <span className="text-base font-black tracking-tight">{r.telefono || 'SIN TELÉFONO'}</span>
-                    </div>
-                  </td>
-                  <td className="py-10">
-                    <div className="flex items-center gap-3">
-                      <Briefcase size={14} className="text-gray-600" />
-                      <span className="text-[11px] font-black text-gray-300 uppercase tracking-[0.2em] bg-white/5 px-4 py-2 rounded-xl border border-white/10 group-hover:border-purple-500/20 transition-all">
-                        {r.rubro}
+                      <span className="text-base font-black tracking-tight">
+                        {r.telefono || 'EN PROCESO'}
                       </span>
                     </div>
                   </td>
                   <td className="py-10">
+                    <span className="text-[11px] font-black text-gray-300 uppercase tracking-widest bg-white/5 px-6 py-2.5 rounded-2xl border border-white/10">
+                      {r.rubro}
+                    </span>
+                  </td>
+                  <td className="py-10">
                     <div className="flex items-center gap-3">
                       <UserCheck size={14} className="text-purple-500" />
-                      <span className="text-[12px] font-black text-white uppercase italic tracking-tight">
+                      <span className="text-[13px] font-black text-white italic tracking-tight uppercase">
                         {r.agente}
                       </span>
                     </div>
                   </td>
                   <td className="py-10 px-12 text-right">
-                    <div className="flex items-center justify-end gap-3 text-gray-500">
+                    <div className="flex items-center justify-end gap-3 text-gray-600">
                       <Calendar size={14} />
-                      <span className="text-[10px] font-black uppercase tracking-widest">{r.fecha}</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest">
+                        {formatDisplayDate(r.fecha)}
+                      </span>
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {filtered.length === 0 && (
-            <div className="py-60 text-center opacity-10 flex flex-col items-center">
-              <Database size={80} className="mb-6" />
-              <p className="text-xl font-black uppercase tracking-[0.5em]">Sin registros que mostrar</p>
+          
+          {filtered.length === 0 && !isSyncing && (
+            <div className="py-60 text-center opacity-30 flex flex-col items-center">
+              <FilterX size={80} className="mb-6 text-gray-700" />
+              <p className="text-xl font-black uppercase tracking-[0.5em] text-gray-700">Base de datos sin resultados</p>
+              <button onClick={() => {setSearchTerm(''); setSelectedMonth('all'); fetchData();}} className="mt-6 text-[10px] font-black text-purple-500 uppercase tracking-widest border border-purple-500/20 px-6 py-3 rounded-xl hover:bg-purple-500/10 transition-all">Limpiar y Re-Sincronizar</button>
+            </div>
+          )}
+          
+          {isSyncing && (
+            <div className="py-60 text-center flex flex-col items-center">
+              <Loader2 size={40} className="animate-spin text-purple-500 mb-4" />
+              <p className="text-xs font-black uppercase tracking-widest text-gray-500 italic">Leyendo base de datos centralizada...</p>
             </div>
           )}
         </div>

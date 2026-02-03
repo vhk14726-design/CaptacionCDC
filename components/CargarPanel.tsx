@@ -16,8 +16,8 @@ import {
   Phone
 } from 'lucide-react';
 
-// URL Proporcionada por el usuario
-const GOOGLE_SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwWiU0msCle-8cRWGPxO4IGilOR5sFnJgfiVy_x00QhH8kDRyPSTZVMaYtlyDJBaPiQ/exec';
+// URL Proporcionada por el usuario (Nueva Implementación)
+const GOOGLE_SHEETS_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzffCE6i9aLH2Wmo2R64kYBxMhZmENUoJR1pHVYxbeD5OMdA-yIvqxNVGcaaL-B-v31/exec';
 
 const CargarPanel: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -73,10 +73,10 @@ const CargarPanel: React.FC = () => {
     setStatus(null);
 
     try {
-      const fullPhone = `+595${formData.telefono.trim()}`;
+      const fullPhone = formData.telefono.trim();
       const params = new URLSearchParams();
       params.append('ci', formData.ci.trim());
-      // Enviamos el teléfono dentro del contacto y también como parámetro extra si el script lo soporta
+      // Enviamos el teléfono dentro del contacto y también como parámetro extra
       params.append('contacto', `CLIENTE_${formData.ci.trim()} | TEL: ${fullPhone}`);
       params.append('telefono', fullPhone);
       params.append('rubro', finalRubro.trim().toUpperCase());
@@ -187,19 +187,16 @@ const CargarPanel: React.FC = () => {
                 <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-green-500 transition-colors z-10">
                   <Phone size={18} />
                 </div>
-                <div className="absolute left-12 top-1/2 -translate-y-1/2 text-green-500 font-black text-sm pointer-events-none z-10">
-                  +595
-                </div>
                 <input 
                   type="tel"
                   name="telefono"
                   value={formData.telefono}
                   onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, ''); // Solo números
+                    const val = e.target.value.replace(/[^0-9+]/g, ''); 
                     setFormData(prev => ({ ...prev, telefono: val }));
                   }}
-                  placeholder="981 123456"
-                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-24 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-800 font-bold"
+                  placeholder="Ej: 0981123456"
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-sm text-white focus:outline-none focus:border-green-500 transition-all placeholder:text-gray-800 font-bold"
                 />
               </div>
             </div>
