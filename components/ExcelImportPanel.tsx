@@ -57,6 +57,32 @@ const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({ userRole }) => {
   const isAdmin = userRole === 'admin';
   const isSupabaseConfigured = !!supabase;
 
+  // Función para convertir fechas de Excel (números) a string YYYY-MM-DD
+  const formatExcelDate = (val: any) => {
+    if (!val) return '';
+    
+    // Si es un número (formato de fecha serial de Excel)
+    if (typeof val === 'number') {
+      const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+      return date.toISOString().split('T')[0];
+    }
+    
+    // Si ya es un objeto Date
+    if (val instanceof Date) {
+      return val.toISOString().split('T')[0];
+    }
+
+    // Intentar parsear si es un string
+    try {
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) {
+        return d.toISOString().split('T')[0];
+      }
+    } catch(e) {}
+
+    return String(val);
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -73,24 +99,26 @@ const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({ userRole }) => {
         const workbook = XLSX.read(bstr, { type: 'binary' });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
+        
+        // Obtenemos los datos crudos para manejar los tipos de celdas manualmente si es necesario
         const json = XLSX.utils.sheet_to_json(sheet);
 
         if (json.length === 0) throw new Error("Archivo vacío.");
 
         const normalizedData: ExcelData[] = json.map((row: any) => {
-          const findValue = (possibleKeys: string[]) => {
+          const findRawValue = (possibleKeys: string[]) => {
             const key = Object.keys(row).find(k => 
               possibleKeys.includes(k.toLowerCase().trim())
             );
-            return key ? String(row[key]) : '';
+            return key ? row[key] : undefined;
           };
 
           return {
-            ci: findValue(['ci_cliente', 'ci', 'documento', 'cedula']),
-            contacto: findValue(['contacto', 'nombre', 'cliente']) || findValue(['ci_cliente', 'ci']) || 'REGISTRO EXCEL',
-            rubro: findValue(['rubro', 'categoria', 'interes']) || 'GENERAL',
-            fecha: findValue(['fecha_de_carga', 'fecha', 'dia']),
-            agente: findValue(['agente', 'vendedor', 'responsable']) || 'SISTEMA_IMPORT'
+            ci: String(findRawValue(['ci_cliente', 'ci', 'documento', 'cedula']) || ''),
+            contacto: String(findRawValue(['contacto', 'nombre', 'cliente']) || findRawValue(['ci_cliente', 'ci']) || 'REGISTRO EXCEL'),
+            rubro: String(findRawValue(['rubro', 'categoria', 'interes']) || 'GENERAL'),
+            fecha: formatExcelDate(findRawValue(['fecha_de_carga', 'fecha', 'dia'])),
+            agente: String(findRawValue(['agente', 'vendedor', 'responsable']) || 'SISTEMA_IMPORT')
           };
         });
 
@@ -121,7 +149,6 @@ const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({ userRole }) => {
     setError(null);
 
     try {
-      // Intentamos subir los datos a la tabla 'prospectos'
       const { error: insertError } = await supabase
         .from('prospectos')
         .insert(data.map(item => ({
@@ -135,11 +162,8 @@ const ExcelImportPanel: React.FC<ExcelImportPanelProps> = ({ userRole }) => {
       if (insertError) throw insertError;
 
       setUploadStatus('success');
-      
-      // Notificamos al Módulo Clientes que hay datos nuevos para que se refresque automáticamente
       window.dispatchEvent(new CustomEvent('customer_data_updated'));
       
-      // Limpiamos la vista previa para confirmar que ya se procesó
       setTimeout(() => {
         setData([]);
         setFileName(null);
