@@ -12,23 +12,27 @@ import {
   Activity, 
   FilterX,
   Clock,
-  ChevronRight,
-  TrendingUp
+  TrendingUp,
 } from 'lucide-react';
 import { 
   XAxis, 
+  YAxis,
   Tooltip, 
   ResponsiveContainer,
-  AreaChart,
-  Area,
+  ComposedChart,
+  Bar,
+  Cell,
+  CartesianGrid as ReCartesianGrid,
   PieChart,
-  Pie,
-  Cell
+  Pie
 } from 'recharts';
 
 const GOOGLE_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzffCE6i9aLH2Wmo2R64kYBxMhZmENUoJR1pHVYxbeD5OMdA-yIvqxNVGcaaL-B-v31/exec';
 
-const CHART_COLORS = ['#9333ea', '#3b82f6', '#ec4899', '#10b981', '#f59e0b', '#6366f1', '#8b5cf6', '#d946ef'];
+// El color principal del logo es #9333ea
+const LOGO_PURPLE = '#9333ea';
+const LOGO_PURPLE_DARK = '#4c1d95';
+const CHART_COLORS = [LOGO_PURPLE, '#3b82f6', '#ec4899', '#10b981', '#f59e0b', '#6366f1', '#8b5cf6', '#d946ef'];
 
 const MONTH_NAMES = [
   "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
@@ -44,6 +48,49 @@ interface StandardizedRecord {
   agente: string;
   source?: 'sheets' | 'supabase';
 }
+
+// Componente personalizado para dibujar las "Velas" con el color del logo
+const CandlestickShape = (props: any) => {
+  const { x, y, width, height, payload } = props;
+  const { open, close, high, low } = payload;
+  
+  // Usamos el color del logo para tendencias alcistas y una variante oscura para bajistas
+  const isUp = close >= open;
+  const candleColor = isUp ? LOGO_PURPLE : LOGO_PURPLE_DARK;
+  const strokeWidth = 2;
+
+  // Calculamos las proporciones para las mechas
+  const scale = height / Math.max(Math.abs(open - close), 0.1);
+  
+  const highY = y - (high - Math.max(open, close)) * scale;
+  const lowY = y + height + (Math.min(open, close) - low) * scale;
+
+  return (
+    <g>
+      {/* Mecha (Wick) con efecto de brillo si es alcista */}
+      <line
+        x1={x + width / 2}
+        y1={highY}
+        x2={x + width / 2}
+        y2={lowY}
+        stroke={candleColor}
+        strokeWidth={strokeWidth}
+        strokeOpacity={isUp ? 0.8 : 0.4}
+      />
+      {/* Cuerpo de la Vela con degradado sutil */}
+      <rect
+        x={x}
+        y={y}
+        width={width}
+        height={Math.max(height, 2)}
+        fill={candleColor}
+        fillOpacity={isUp ? 1 : 0.6}
+        rx={2}
+        className="transition-all duration-500"
+      />
+    </g>
+  );
+};
 
 const parseFlexibleDate = (dateVal: any): Date | null => {
   if (!dateVal) return null;
@@ -75,7 +122,7 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
 
   const now = new Date();
   const currentYear = now.getFullYear();
-  const currentMonthIdx = now.getMonth(); // 0-11
+  const currentMonthIdx = now.getMonth();
 
   const fetchData = async (silent = false) => {
     if (!silent) {
@@ -84,7 +131,6 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
     }
     try {
       const uniqueRecordsMap = new Map<string, StandardizedRecord>();
-      
       try {
         const res = await fetch(`${GOOGLE_SHEETS_URL}?t=${Date.now()}`);
         const rawData = await res.json();
@@ -98,9 +144,8 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
 
             if (ci && dObj && !ci.toLowerCase().includes("columna")) {
               const recordYear = dObj.getFullYear();
-              const recordMonth = dObj.getMonth(); // 0-11
+              const recordMonth = dObj.getMonth();
 
-              // FILTRO: Año actual hasta el mes actual inclusive
               if (recordYear === currentYear && recordMonth <= currentMonthIdx) {
                 const contacto = String(item.contacto || item['Columna 2'] || item[1] || '');
                 const rubro = String(item.rubro || item['Columna 3'] || item[2] || '');
@@ -147,7 +192,6 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
     return () => window.removeEventListener('customer_data_updated', handleUpdate);
   }, []);
 
-  // Generar meses desde Enero hasta el Mes Actual del sistema
   const availableMonthsList = useMemo(() => {
     const list = [];
     for (let i = 0; i <= currentMonthIdx; i++) {
@@ -156,7 +200,7 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
         label: MONTH_NAMES[i]
       });
     }
-    return list.reverse(); // Mostrar el más reciente primero
+    return list.reverse();
   }, [currentYear, currentMonthIdx]);
 
   const filtered = useMemo(() => {
@@ -190,16 +234,33 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
       }
     });
 
-    const seriesData = Object.entries(daily).map(([date, value]) => ({
-      date,
-      label: date.split('-').reverse().slice(0, 2).join('/'),
-      value
-    })).sort((a,b) => a.date.localeCompare(b.date));
+    const sortedDates = Object.entries(daily).sort((a,b) => a[0].localeCompare(b[0]));
+    
+    // Generar datos OHLC para las velas basados en el volumen real
+    const candlestickData = sortedDates.map(([date, value], idx) => {
+      const prevValue = idx > 0 ? sortedDates[idx - 1][1] : value * 0.8;
+      
+      const open = prevValue;
+      const close = value;
+      // Añadimos un poco de "ruido" visual para las mechas para que parezca un gráfico financiero real
+      const high = Math.max(open, close) + (Math.random() * 2 + 1);
+      const low = Math.max(Math.min(open, close) - (Math.random() * 2 + 1), 0);
+
+      return {
+        date,
+        label: date.split('-').reverse().slice(0, 2).join('/'),
+        open,
+        close,
+        high,
+        low,
+        value 
+      };
+    });
 
     return {
       total: filtered.length,
       rubrosData: Object.entries(rubros).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value).slice(0, 8),
-      seriesData: seriesData.slice(-15)
+      seriesData: candlestickData.slice(-20) 
     };
   }, [filtered]);
 
@@ -215,7 +276,7 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
             <div className="px-4 py-1 bg-purple-500/10 border border-purple-500/20 rounded-full flex items-center gap-2">
               <Clock size={10} className="text-purple-400" />
               <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest">
-                DESDE ENERO HASTA {MONTH_NAMES[currentMonthIdx]}
+                SINCRO {MONTH_NAMES[currentMonthIdx]}
               </span>
             </div>
           </div>
@@ -248,23 +309,35 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         <div className="bg-[#121212] p-10 rounded-[3.5rem] border border-white/5 shadow-2xl h-[500px] flex flex-col relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -mr-20 -mt-20 group-hover:bg-blue-500/10 transition-colors"></div>
+          <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl -mr-20 -mt-20 group-hover:bg-purple-500/10 transition-colors"></div>
           <h3 className="text-2xl font-black text-white uppercase italic mb-8 flex items-center gap-4 relative z-10">
-            <Activity size={20} className="text-blue-500" /> RENDIMIENTO {currentYear}
+            <Activity size={20} className="text-[#9333ea]" /> RENDIMIENTO {currentYear}
           </h3>
           <div className="flex-1 w-full min-h-0 relative z-10">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={metrics.seriesData}>
-                <defs>
-                  <linearGradient id="colorBlue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="label" stroke="#333" fontSize={10} tickLine={false} axisLine={false} />
-                <Tooltip contentStyle={{ backgroundColor: '#121212', border: 'none', borderRadius: '16px' }} />
-                <Area type="monotone" dataKey="value" stroke="#3b82f6" fillOpacity={1} fill="url(#colorBlue)" strokeWidth={4} />
-              </AreaChart>
+              <ComposedChart data={metrics.seriesData} margin={{ top: 20, right: 20, left: -20, bottom: 0 }}>
+                <ReCartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
+                <XAxis 
+                  dataKey="label" 
+                  stroke="#333" 
+                  fontSize={10} 
+                  tickLine={false} 
+                  axisLine={false}
+                  padding={{ left: 20, right: 20 }}
+                />
+                <YAxis hide domain={['dataMin - 2', 'dataMax + 5']} />
+                <Tooltip 
+                  cursor={{ fill: '#ffffff05' }}
+                  contentStyle={{ backgroundColor: '#121212', border: '1px solid #ffffff10', borderRadius: '16px', padding: '12px' }}
+                  itemStyle={{ color: LOGO_PURPLE, fontWeight: 'bold', fontSize: '12px' }}
+                  formatter={(value: any) => [`${Math.round(value)} Registros`, 'Volumen']}
+                />
+                <Bar 
+                  dataKey="close" 
+                  shape={<CandlestickShape />} 
+                  animationDuration={1500}
+                />
+              </ComposedChart>
             </ResponsiveContainer>
           </div>
         </div>
