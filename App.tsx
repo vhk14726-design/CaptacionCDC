@@ -89,7 +89,7 @@ const App: React.FC = () => {
             </h1>
             <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3 flex items-center gap-2">
               <ShieldCheck size={14} className={`transition-colors ${userRole === 'admin' ? 'text-purple-500' : 'text-blue-500'}`} /> 
-              CLC Captación Intelligence v2.0 <span className="text-gray-700">|</span> 
+              make by rohit krause <span className="text-gray-700">|</span> 
               <span className={userRole === 'admin' ? 'text-purple-400' : 'text-blue-400'}>
                 {userRole === 'admin' ? ' Modo Administrador' : ' Modo Colaborador'}
               </span>
@@ -120,7 +120,7 @@ const App: React.FC = () => {
              </div>
           </div>
           <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">
-            © 2025 CLC Captación Intelligence • {userRole?.toUpperCase()} ACCESS
+            © 2025 make by rohit krause • {userRole?.toUpperCase()} ACCESS
           </p>
         </footer>
       </main>
