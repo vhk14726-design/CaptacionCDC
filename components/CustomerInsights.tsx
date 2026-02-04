@@ -93,16 +93,13 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState('all');
 
-  // Ajustamos el año a 2026 para que coincida con el reporte del usuario
   const DISPLAY_YEAR = 2026;
-  const currentMonthIdx = new Date().getMonth();
 
   const fetchData = async (silent = false) => {
     if (!silent) setIsSyncing(true);
     try {
       const uniqueRecordsMap = new Map<string, StandardizedRecord>();
 
-      // 1. Fetch de Google Sheets
       const sheetRes = await fetch(`${GOOGLE_SHEETS_URL}?t=${Date.now()}`);
       const rawSheet = await sheetRes.json();
       const sheetItems = Array.isArray(rawSheet) ? rawSheet : (rawSheet.data || []);
@@ -122,7 +119,6 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
         }
       });
 
-      // 2. Fetch de Supabase (Datos Importados por Excel)
       if (supabase) {
         const { data: dbItems } = await supabase.from('prospectos').select('*');
         dbItems?.forEach((item: any) => {
@@ -152,7 +148,9 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
 
   useEffect(() => {
     fetchData();
-    window.addEventListener('customer_data_updated', () => fetchData(true));
+    const handleUpdate = () => fetchData(true);
+    window.addEventListener('customer_data_updated', handleUpdate);
+    return () => window.removeEventListener('customer_data_updated', handleUpdate);
   }, []);
 
   const availableMonthsList = useMemo(() => {
@@ -222,7 +220,7 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
            <select 
              value={selectedMonth} 
              onChange={(e) => setSelectedMonth(e.target.value)}
-             className="bg-[#121212] border border-white/5 rounded-2xl py-4 px-6 text-[11px] font-black text-white uppercase tracking-widest focus:outline-none focus:border-purple-500"
+             className="bg-[#121212] border border-white/5 rounded-2xl py-4 px-6 text-[11px] font-black text-white uppercase tracking-widest focus:outline-none focus:border-purple-500 cursor-pointer"
            >
              <option value="all">📅 GESTIÓN COMPLETA {DISPLAY_YEAR}</option>
              {availableMonthsList.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
@@ -245,8 +243,12 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
                 <ReCartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ffffff05" />
                 <XAxis dataKey="label" stroke="#333" fontSize={10} axisLine={false} tickLine={false} />
                 <YAxis hide />
-                <Tooltip contentStyle={{ backgroundColor: '#121212', border: '1px solid #ffffff10', borderRadius: '16px' }} />
-                <Bar dataKey="close" shape={<CandlestickShape />} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#121212', border: '1px solid #ffffff10', borderRadius: '16px', padding: '12px' }}
+                  itemStyle={{ color: '#ffffff', fontWeight: '800', fontSize: '11px', textTransform: 'uppercase', fontFamily: 'Plus Jakarta Sans' }}
+                  labelStyle={{ color: LOGO_PURPLE, fontWeight: 'bold', marginBottom: '4px' }}
+                />
+                <Bar name="Clientes Cargados" dataKey="close" shape={<CandlestickShape />} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
