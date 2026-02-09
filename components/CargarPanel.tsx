@@ -48,7 +48,8 @@ const CargarPanel: React.FC = () => {
     'Javier',
     'Ivana',
     'Gabriela',
-    'Nicol'
+    'Nicol',
+    'Liz'
   ];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
