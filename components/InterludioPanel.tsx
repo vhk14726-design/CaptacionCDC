@@ -17,7 +17,8 @@ import {
   Calendar,
   TableProperties,
   ArrowRight,
-  ClipboardList
+  ClipboardList,
+  Fingerprint
 } from 'lucide-react';
 
 const INTERLUDIO_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxq-2osTNIhZQY9DMooCKYeRkBQlnHULr_fA9jCVrvgOiJR6yP1G2i7BG0qZgu5E0nw8Q/exec';
@@ -101,6 +102,7 @@ const InterludioPanel: React.FC = () => {
     if (!row) return 'N/A';
     const keys = Object.keys(row);
     
+    // Intento 1: Coincidencia exacta o normalizada
     for (const alias of aliases) {
       const target = normalizeKey(alias);
       const exactKey = keys.find(k => normalizeKey(k) === target);
@@ -109,11 +111,20 @@ const InterludioPanel: React.FC = () => {
       }
     }
 
-    if (aliases.some(a => a.toLowerCase().includes('observ'))) {
+    // Intento 2: Búsqueda por palabra clave (especial para observaciones y firmas)
+    const combinedAliases = aliases.join(' ').toLowerCase();
+    if (combinedAliases.includes('observ')) {
       const obsKey = keys.find(k => k.toLowerCase().includes('observ') || k.toLowerCase().includes('obs'));
-      if (obsKey && row[obsKey] !== undefined && row[obsKey] !== null && String(row[obsKey]).trim() !== "") {
-        return String(row[obsKey]);
-      }
+      if (obsKey) return String(row[obsKey]);
+    }
+    
+    if (combinedAliases.includes('firma')) {
+      // Evitamos confundir con "fecha_firma" buscando una columna que sea exactamente "firma" o similar corto
+      const fKey = keys.find(k => {
+        const nk = normalizeKey(k);
+        return nk === 'firma' || nk === 'estadofirma';
+      });
+      if (fKey) return String(row[fKey]);
     }
 
     return 'N/A';
@@ -292,9 +303,16 @@ const InterludioPanel: React.FC = () => {
                   <p className="text-[10px] font-black text-green-500/60 uppercase mb-2">Monto Operación</p>
                   <p className="text-4xl font-black text-green-500 tracking-tighter">{formatCurrency(getFlexibleValue(selectedRecord, 'total'))}</p>
                 </div>
+                
                 <div className="space-y-4">
                   <div className="flex justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                    <span className="text-[9px] font-black text-gray-500 uppercase">Firma</span>
+                    <span className="text-[9px] font-black text-gray-500 uppercase">Estado Firma</span>
+                    <span className={`text-xs font-black uppercase ${getFlexibleValue(selectedRecord, 'firma').toUpperCase() === 'SI' ? 'text-green-500' : 'text-red-500'}`}>
+                      {getFlexibleValue(selectedRecord, 'firma')}
+                    </span>
+                  </div>
+                  <div className="flex justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                    <span className="text-[9px] font-black text-gray-500 uppercase">Fecha Firma</span>
                     <span className="text-xs font-black text-white">{formatDateValue(getFlexibleValue(selectedRecord, 'fecha_firma'))}</span>
                   </div>
                   <div className="flex justify-between p-4 bg-white/5 rounded-2xl border border-[#f0b86a]/20">
