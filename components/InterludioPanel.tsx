@@ -22,7 +22,8 @@ import {
   Briefcase,
   Tag,
   Phone,
-  FileText
+  FileText,
+  Hash
 } from 'lucide-react';
 
 // URL Actualizada proporcionada por el usuario
@@ -46,6 +47,7 @@ const InterludioPanel: React.FC = () => {
     ciudad: '',           
     fecha_firma: '',      
     diligencia: '',       
+    cuotas: '1',          // Nueva opción: Cantidad de cuotas
     cuota: '',            
     total: '',            
     posible_cobro: '',    
@@ -63,6 +65,9 @@ const InterludioPanel: React.FC = () => {
 
   const empresasPredefinidas = ['LME', 'GFV'];
   const proveedoresPredefinidos = ['CAPTACIÓN', 'PROPIO'];
+  
+  // Lista de números del 1 al 200 para el datalist
+  const listaCuotas = Array.from({ length: 200 }, (_, i) => i + 1);
 
   const handleLimpiar = () => {
     setFirmaData(initialFirmaState);
@@ -77,7 +82,6 @@ const InterludioPanel: React.FC = () => {
       const date = new Date(val);
       if (isNaN(date.getTime())) return String(val);
       
-      // Usamos UTC para evitar desfases de zona horaria que cambian el día
       const day = String(date.getUTCDate()).padStart(2, '0');
       const month = String(date.getUTCMonth() + 1).padStart(2, '0');
       const year = date.getUTCFullYear();
@@ -94,8 +98,8 @@ const InterludioPanel: React.FC = () => {
     return key.toLowerCase()
       .trim()
       .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "") // Quitar acentos
-      .replace(/[^a-z0-9]/g, '');      // Quitar puntos y espacios
+      .replace(/[\u0300-\u036f]/g, "") 
+      .replace(/[^a-z0-9]/g, '');      
   };
 
   const getFlexibleValue = (row: any, ...aliases: string[]) => {
@@ -386,7 +390,7 @@ const InterludioPanel: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="space-y-2">
                 <label className="text-[9px] font-black text-gray-500 uppercase ml-1">Ciudad / Localidad *</label>
                 <input type="text" name="ciudad" value={firmaData.ciudad} onChange={handleFirmaChange} required className="w-full bg-[#080808] border border-white/5 rounded-xl py-4 px-5 text-sm text-white" />
@@ -400,6 +404,25 @@ const InterludioPanel: React.FC = () => {
                 <input type="date" name="diligencia" value={firmaData.diligencia} onChange={handleFirmaChange} className="w-full bg-[#080808] border border-white/5 rounded-xl py-4 px-5 text-sm text-white" />
               </div>
               <div className="space-y-2">
+                <label className="text-[9px] font-black text-gray-500 uppercase ml-1">Cant. Cuotas *</label>
+                <div className="relative">
+                  <input 
+                    list="cuotas-list"
+                    name="cuotas"
+                    value={firmaData.cuotas}
+                    onChange={handleFirmaChange}
+                    placeholder="1-200"
+                    className="w-full bg-[#080808] border border-white/5 rounded-xl py-4 px-5 text-sm text-white focus:border-[#f0b86a]/50 transition-all font-bold"
+                  />
+                  <datalist id="cuotas-list">
+                    {listaCuotas.map(n => <option key={n} value={n} />)}
+                  </datalist>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+              <div className="space-y-2">
                 <label className="text-[9px] font-black text-gray-500 uppercase ml-1">Monto Cuota (Gs)</label>
                 <input type="text" name="cuota" value={firmaData.cuota} onChange={handleFirmaChange} placeholder="Gs. 0" className="w-full bg-[#080808] border border-white/5 rounded-xl py-4 px-5 text-sm text-white" />
               </div>
@@ -407,9 +430,6 @@ const InterludioPanel: React.FC = () => {
                 <label className="text-[9px] font-black text-gray-500 uppercase ml-1">Monto Total (Gs)</label>
                 <input type="text" name="total" value={firmaData.total} onChange={handleFirmaChange} placeholder="Gs. 0" className="w-full bg-[#080808] border border-white/5 rounded-xl py-4 px-5 text-sm text-white" />
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="space-y-2">
                 <label className="text-[9px] font-black text-gray-500 uppercase ml-1">Fecha Posible Cobro</label>
                 <input type="date" name="posible_cobro" value={firmaData.posible_cobro} onChange={handleFirmaChange} className="w-full bg-[#080808] border border-white/5 rounded-xl py-4 px-5 text-sm text-white" />
@@ -429,6 +449,9 @@ const InterludioPanel: React.FC = () => {
                   {empresasPredefinidas.map(e => <option key={e} value={e}>{e}</option>)}
                 </select>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
               <div className="space-y-2">
                 <label className="text-[9px] font-black text-gray-500 uppercase ml-1">Proveedor Externo</label>
                 <select name="proveedor" value={firmaData.proveedor} onChange={handleFirmaChange} className="w-full bg-[#080808] border border-white/5 rounded-xl py-4 px-5 text-sm text-white appearance-none cursor-pointer">
