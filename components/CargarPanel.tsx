@@ -130,7 +130,7 @@ const CargarPanel: React.FC = () => {
               <PlusCircle size={32} className="text-white" />
             </div>
             <div>
-              <h2 className="text-3xl font-black text-white tracking-tight uppercase italic">Cargar Clientes</h2>
+              <h2 className="text-3xl font-black text-white tracking-tight uppercase italic">Captación de Clientes</h2>
               <div className="flex items-center gap-2 mt-1">
                 <FileSpreadsheet size={12} className="text-green-500" />
                 <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest italic">Google Sheets Direct Sync v2.5</p>

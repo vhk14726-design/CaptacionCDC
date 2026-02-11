@@ -7,7 +7,8 @@ import {
   LogOut,
   Users,
   PlusCircle,
-  FileDown
+  FileDown,
+  Layers
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -27,7 +28,8 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout, us
     { name: 'Informe', icon: <Home size={18} />, category: 'Core', show: true },
     { name: 'Clientes', icon: <Users size={18} />, category: 'Core', show: true },
     { name: 'Importar', icon: <FileDown size={18} />, category: 'Core', show: true },
-    { name: 'Cargar', icon: <PlusCircle size={18} />, category: 'Core', show: isAdmin },
+    { name: 'Captación', icon: <PlusCircle size={18} />, category: 'Core', show: isAdmin },
+    { name: 'Interludio', icon: <Layers size={18} />, category: 'Admin', show: isAdmin },
     { name: 'Campañas', icon: <Target size={18} />, category: 'Ads', show: true },
     { name: 'Reportes', icon: <BarChart3 size={18} />, category: 'Intelligence', show: true },
   ];

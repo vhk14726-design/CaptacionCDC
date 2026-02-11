@@ -7,6 +7,7 @@ import ReportsCenter from './components/ReportsCenter.tsx';
 import CustomerInsights from './components/CustomerInsights.tsx';
 import CargarPanel from './components/CargarPanel.tsx';
 import ExcelImportPanel from './components/ExcelImportPanel.tsx';
+import InterludioPanel from './components/InterludioPanel.tsx';
 import LoginGate from './components/LoginGate.tsx';
 import { ShieldCheck, AlertCircle, Lock } from 'lucide-react';
 
@@ -51,8 +52,10 @@ const App: React.FC = () => {
         return <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
       case 'Clientes':
         return <CustomerInsights userRole={userRole} />;
-      case 'Cargar':
+      case 'Captación':
         return userRole === 'admin' ? <CargarPanel /> : <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
+      case 'Interludio':
+        return userRole === 'admin' ? <InterludioPanel /> : <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
       case 'Importar':
         return <ExcelImportPanel userRole={userRole} />;
       case 'Campañas':
