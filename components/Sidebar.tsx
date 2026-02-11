@@ -26,7 +26,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout, us
 
   const menuItems = [
     { name: 'Informe', icon: <Home size={18} />, category: 'Core', show: true },
-    { name: 'Clientes', icon: <Users size={18} />, category: 'Core', show: true },
+    { name: 'Dashboard Captación', icon: <Users size={18} />, category: 'Core', show: true },
     { name: 'Importar', icon: <FileDown size={18} />, category: 'Core', show: true },
     { name: 'Captación', icon: <PlusCircle size={18} />, category: 'Core', show: isAdmin },
     { name: 'Interludio', icon: <Layers size={18} />, category: 'Admin', show: isAdmin },

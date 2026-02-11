@@ -43,6 +43,7 @@ const CargarPanel: React.FC = () => {
     'JUBILADO/A'
   ];
 
+  // Agentes exclusivos de Captación según la imagen proporcionada
   const agentesPredefinidos = [
     'Leidy',
     'Javier',
@@ -77,14 +78,12 @@ const CargarPanel: React.FC = () => {
       const fullPhone = formData.telefono.trim();
       const params = new URLSearchParams();
       params.append('ci', formData.ci.trim());
-      // Enviamos el teléfono dentro del contacto y también como parámetro extra
       params.append('contacto', `CLIENTE_${formData.ci.trim()} | TEL: ${fullPhone}`);
       params.append('telefono', fullPhone);
       params.append('rubro', finalRubro.trim().toUpperCase());
       params.append('fecha', formData.fecha);
       params.append('agente', formData.agente.trim().toUpperCase());
 
-      // Sincronización directa con Google Sheets
       await fetch(GOOGLE_SHEETS_WEBAPP_URL, {
         method: 'POST',
         mode: 'no-cors',
@@ -123,7 +122,6 @@ const CargarPanel: React.FC = () => {
   return (
     <div className="max-w-4xl mx-auto py-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="bg-[#1c1c1c] rounded-[3rem] border border-white/5 shadow-2xl overflow-hidden">
-        {/* Banner Header */}
         <div className="p-10 border-b border-white/5 bg-gradient-to-r from-green-600/10 to-transparent flex items-center justify-between">
           <div className="flex items-center gap-6">
             <div className="w-16 h-16 bg-green-600 rounded-2xl flex items-center justify-center shadow-lg shadow-green-600/20">

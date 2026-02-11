@@ -50,7 +50,7 @@ const App: React.FC = () => {
     switch (activeTab) {
       case 'Informe':
         return <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
-      case 'Clientes':
+      case 'Dashboard Captación':
         return <CustomerInsights userRole={userRole} />;
       case 'Captación':
         return userRole === 'admin' ? <CargarPanel /> : <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;

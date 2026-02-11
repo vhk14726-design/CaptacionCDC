@@ -205,16 +205,10 @@ const CustomerInsights: React.FC<{ userRole?: string | null }> = ({ userRole }) 
     <div className="space-y-12 animate-in fade-in duration-1000 pb-32">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <h2 className="text-7xl font-black text-white tracking-tighter uppercase italic leading-none">Clientes</h2>
-          <div className="flex items-center gap-4 mt-2">
-            <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] flex items-center gap-2">
-              <ShieldCheck size={12} className="text-purple-500" /> GESTIÓN {DISPLAY_YEAR}
-            </p>
-            <div className="px-4 py-1 bg-purple-500/10 border border-purple-500/20 rounded-full flex items-center gap-2">
-              <Clock size={10} className="text-purple-400" />
-              <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest">SINCRO TOTAL</span>
-            </div>
-          </div>
+          <h2 className="text-7xl font-black text-white tracking-tighter uppercase italic leading-none">Dashboard Captación</h2>
+          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] flex items-center gap-2 mt-2">
+            <ShieldCheck size={12} className="text-purple-500" /> GESTIÓN {DISPLAY_YEAR}
+          </p>
         </div>
         <div className="flex items-center gap-4">
            <select 
