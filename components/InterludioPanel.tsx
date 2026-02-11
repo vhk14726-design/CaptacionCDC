@@ -81,6 +81,8 @@ const InterludioPanel: React.FC = () => {
 
   const formatDateValue = (val: any) => {
     if (!val || val === 'N/A' || val === '') return 'N/A';
+    if (String(val).toUpperCase() === 'SI' || String(val).toUpperCase() === 'NO') return 'N/A';
+    
     try {
       const date = new Date(val);
       if (isNaN(date.getTime())) return String(val);
@@ -102,7 +104,6 @@ const InterludioPanel: React.FC = () => {
     if (!row) return 'N/A';
     const keys = Object.keys(row);
     
-    // Intento 1: Coincidencia exacta o normalizada
     for (const alias of aliases) {
       const target = normalizeKey(alias);
       const exactKey = keys.find(k => normalizeKey(k) === target);
@@ -111,20 +112,25 @@ const InterludioPanel: React.FC = () => {
       }
     }
 
-    // Intento 2: Búsqueda por palabra clave (especial para observaciones y firmas)
-    const combinedAliases = aliases.join(' ').toLowerCase();
-    if (combinedAliases.includes('observ')) {
-      const obsKey = keys.find(k => k.toLowerCase().includes('observ') || k.toLowerCase().includes('obs'));
-      if (obsKey) return String(row[obsKey]);
-    }
-    
-    if (combinedAliases.includes('firma')) {
-      // Evitamos confundir con "fecha_firma" buscando una columna que sea exactamente "firma" o similar corto
+    if (aliases.includes('firma_status')) {
       const fKey = keys.find(k => {
         const nk = normalizeKey(k);
-        return nk === 'firma' || nk === 'estadofirma';
+        return nk === 'firma' || nk === 'estadofirma' || nk === 'estado';
       });
       if (fKey) return String(row[fKey]);
+    }
+
+    if (aliases.includes('fecha_firma_date')) {
+      const ffKey = keys.find(k => {
+        const nk = normalizeKey(k);
+        return nk === 'fechadefirma' || nk === 'fechafirma' || (nk.includes('fecha') && nk.includes('firma'));
+      });
+      if (ffKey) return String(row[ffKey]);
+    }
+
+    if (aliases.some(a => a.toLowerCase().includes('observ'))) {
+      const obsKey = keys.find(k => k.toLowerCase().includes('observ') || k.toLowerCase().includes('obs'));
+      if (obsKey) return String(row[obsKey]);
     }
 
     return 'N/A';
@@ -230,13 +236,26 @@ const InterludioPanel: React.FC = () => {
   };
 
   const handleGuardarRevision = async () => {
+    // PROTECCIÓN CRÍTICA: Aseguramos que el registro seleccionado sea el que realmente se va a editar.
     if (!selectedRecord) return;
+
+    const ciTarget = getFlexibleValue(selectedRecord, 'ci', 'c_i', 'documento');
+    const nombreTarget = getFlexibleValue(selectedRecord, 'nombre_cliente', 'nombrecliente', 'nombre');
+    
+    if (!ciTarget || ciTarget === 'N/A') {
+      setStatus({ type: 'error', message: 'ID NO ENCONTRADO', detail: 'No se puede localizar el C.I. único de este cliente.' });
+      return;
+    }
+
     setLoadingRevision(true);
     
     try {
       const params = new URLSearchParams();
       params.append('action', 'save_revision');
-      params.append('ci', getFlexibleValue(selectedRecord, 'ci', 'c_i', 'documento'));
+      // Enviamos CI como identificador principal
+      params.append('ci', ciTarget);
+      // Enviamos el Nombre como identificador de respaldo para el script
+      params.append('nombre', nombreTarget);
       params.append('observacion_cese', editObs.toUpperCase());
 
       await fetch(INTERLUDIO_SHEETS_URL, {
@@ -246,10 +265,14 @@ const InterludioPanel: React.FC = () => {
       });
 
       setSelectedRecord(null);
-      setStatus({ type: 'success', message: '¡EXPEDIENTE ACTUALIZADO!', detail: 'La observación se guardó correctamente en la columna O.' });
-      setTimeout(() => fetchAllData(true), 2000);
+      setStatus({ 
+        type: 'success', 
+        message: '¡SINCRO EXITOSA!', 
+        detail: `La observación para ${nombreTarget} ha sido blindada en Sheets.` 
+      });
+      setTimeout(() => fetchAllData(true), 1500);
     } catch (err) {
-      setStatus({ type: 'error', message: 'ERROR AL GUARDAR', detail: 'Intente nuevamente.' });
+      setStatus({ type: 'error', message: 'ERROR DE ESCRITURA', detail: 'Ocurrió un error al intentar actualizar la fila.' });
     } finally {
       setLoadingRevision(false);
     }
@@ -285,7 +308,9 @@ const InterludioPanel: React.FC = () => {
                   </div>
                   <div className="space-y-2">
                     <p className="text-[9px] font-black text-gray-600 uppercase">Nombre</p>
-                    <p className="text-xl font-black text-white italic uppercase">{getFlexibleValue(selectedRecord, 'nombre_cliente', 'nombrecliente', 'nombre')}</p>
+                    <p className="text-xl font-black text-white italic uppercase">
+                      {getFlexibleValue(selectedRecord, 'nombre_cliente', 'nombrecliente', 'nombre')}
+                    </p>
                   </div>
                 </div>
                 <div className="space-y-6">
@@ -306,17 +331,19 @@ const InterludioPanel: React.FC = () => {
                 
                 <div className="space-y-4">
                   <div className="flex justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                    <span className="text-[9px] font-black text-gray-500 uppercase">Estado Firma</span>
-                    <span className={`text-xs font-black uppercase ${getFlexibleValue(selectedRecord, 'firma').toUpperCase() === 'SI' ? 'text-green-500' : 'text-red-500'}`}>
-                      {getFlexibleValue(selectedRecord, 'firma')}
+                    <span className="text-[9px] font-black text-gray-500 uppercase">Estado Firma (L)</span>
+                    <span className={`text-xs font-black uppercase ${getFlexibleValue(selectedRecord, 'firma_status').toUpperCase() === 'SI' ? 'text-green-500' : 'text-red-500'}`}>
+                      {getFlexibleValue(selectedRecord, 'firma_status')}
                     </span>
                   </div>
                   <div className="flex justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                    <span className="text-[9px] font-black text-gray-500 uppercase">Fecha Firma</span>
-                    <span className="text-xs font-black text-white">{formatDateValue(getFlexibleValue(selectedRecord, 'fecha_firma'))}</span>
+                    <span className="text-[9px] font-black text-gray-500 uppercase">Fecha Firma (G)</span>
+                    <span className="text-xs font-black text-white">
+                      {formatDateValue(getFlexibleValue(selectedRecord, 'fecha_firma_date'))}
+                    </span>
                   </div>
                   <div className="flex justify-between p-4 bg-white/5 rounded-2xl border border-[#f0b86a]/20">
-                    <span className="text-[9px] font-black text-[#f0b86a] uppercase">Cobro</span>
+                    <span className="text-[9px] font-black text-[#f0b86a] uppercase">Cobro (J)</span>
                     <span className="text-xs font-black text-white">{formatDateValue(getFlexibleValue(selectedRecord, 'posible_cobro', 'fechaposiblecobro', 'fecha_posible_cobro'))}</span>
                   </div>
                 </div>
