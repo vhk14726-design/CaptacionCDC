@@ -36,8 +36,8 @@ const InterludioPanel: React.FC = () => {
   });
 
   const agentesPredefinidos = ['Leidy', 'Javier', 'Ivana', 'Gabriela', 'Nicol', 'Liz'];
-  const opcionesFirma = ['PENDIENTE', 'FIRMADO', 'RECHAZADO', 'EN PROCESO'];
-  const opcionesCese = ['SI', 'NO', 'EN TRÁMITE'];
+  const opcionesFirma = ['SI', 'NO'];
+  const opcionesCese = ['PENDIENTE', 'PROCESADO', 'APLICADO'];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
