@@ -13,20 +13,16 @@ import {
   ChevronDown,
   MessageSquare,
   Briefcase,
+  ArrowRightCircle,
+  BadgeCheck,
+  Wallet,
   CreditCard,
-  CheckCircle2,
-  Activity,
-  AlertCircle,
-  Calendar as CalendarIcon,
-  MapPin,
-  Building2,
-  FileText,
-  DollarSign,
-  UserCheck
+  Layout,
+  TrendingDown
 } from 'lucide-react';
 
-// URL del script de Google Sheets para Interludio (Firmas)
-const INTERLUDIO_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbyAn48A_IRxOyKecDbwoqB5qCcH2daFrKMZee5lYCtKx5puKa1u-HfU-e622Xo8CLIOKg/exec';
+// URL del script de Google Sheets para Interludio (Actualizada por el usuario)
+const INTERLUDIO_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbx7zaAIKjgfvsSNJ9W0L84dAkByePgVdEPiiJEWODW4IMSgBfgxFhSbmg1VEoHB7bgGqA/exec';
 
 const PLAN_CUOTAS_MAP: Record<string, { cuota: string, total: string }> = {
   '1': { cuota: '2843000', total: '2843000' },
@@ -45,6 +41,9 @@ const InterludioPanel: React.FC = () => {
   const [ceseStatus, setCeseStatus] = useState('PENDIENTE');
   const [obsEdit, setObsEdit] = useState('');
   const [isSavingExp, setIsSavingExp] = useState(false);
+  
+  const [pagoCuota, setPagoCuota] = useState('1');
+  const [pagoMonto, setPagoMonto] = useState('');
   
   const [searchQuery, setSearchQuery] = useState('');
   const [allRecords, setAllRecords] = useState<any[]>([]);
@@ -74,7 +73,8 @@ const InterludioPanel: React.FC = () => {
     empresa: 'LME',          
     proveedor: 'CAPTACIÓN',
     cuota_monto: '0',
-    cese: 'PENDIENTE'
+    cese: 'PENDIENTE',
+    observacion: ''
   };
   const [firmaData, setFirmaData] = useState(initialFirmaState);
 
@@ -87,7 +87,6 @@ const InterludioPanel: React.FC = () => {
     if (!row) return '';
     if (Array.isArray(row)) return String(row[index] || '').trim();
     
-    // Mapeo basado en los encabezados del Excel proporcionado
     const mappingKeys = [
       "ci",                       // 0  (Col A)
       "nombre_cliente",           // 1  (Col B)
@@ -97,36 +96,27 @@ const InterludioPanel: React.FC = () => {
       "ciudad",                   // 5  (Col F)
       "fecha_de_firma",           // 6  (Col G)
       "diligencia",               // 7  (Col H)
-      "cuota",                    // 8  (Col I)
-      "total",                    // 9  (Col J)
+      "cuota",                    // 8  (Col I) - PLAN DE CUOTAS
+      "total",                    // 9  (Col J) - MONTO TOTAL
       "fecha_posible_cobro",      // 10 (Col K)
       "firma",                    // 11 (Col L)
       "empresa",                  // 12 (Col M)
       "proveedor",                // 13 (Col N)
       "observacion",              // 14 (Col O)
-      "cese"                      // 15 (Col P)
+      "cese",                     // 15 (Col P)
+      "cuota_pag",                // 16 (Col Q) - TITULADA 'cuotapag' EN SHEETS
+      "pagado"                    // 17 (Col R) - TITULADA 'pagado' EN SHEETS
     ];
 
     const key = mappingKeys[index];
-    
-    // Intento 1: Acceso directo por clave normalizada
     if (row[key] !== undefined) return String(row[key]).trim();
 
-    // Intento 2: Búsqueda exhaustiva por normalización de todos los campos del objeto
     const keys = Object.keys(row);
     const targetNorm = normalize(key);
     for (const k of keys) {
       if (normalize(k) === targetNorm) return String(row[k]).trim();
     }
     
-    // Intento 3: Variaciones para Fecha Posible Cobro
-    if (index === 10) {
-      const altKeys = ["fechaposiblecobro", "posiblecobro", "fecha_cobro"];
-      for (const k of keys) {
-        if (altKeys.includes(normalize(k))) return String(row[k]).trim();
-      }
-    }
-
     return '';
   };
 
@@ -166,7 +156,8 @@ const InterludioPanel: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (activeInternalTab === 'Cobranzas' || activeInternalTab === 'FIRMAS') {
+    const relevantTabs = ['Cobranzas', 'FIRMAS', 'Pagado'];
+    if (relevantTabs.includes(activeInternalTab)) {
       fetchAllData(true);
     }
   }, [activeInternalTab, fetchAllData]);
@@ -174,10 +165,14 @@ const InterludioPanel: React.FC = () => {
   const handleOpenExpediente = (res: any) => {
     const currentCese = getVal(res, 15);
     const currentObs = getVal(res, 14);
+    
     const status = (currentCese.toUpperCase() === 'SI' || currentCese.toUpperCase() === 'NO') ? currentCese.toUpperCase() : 'PENDIENTE';
     setSelectedExpediente(res);
     setCeseStatus(status);
     setObsEdit(currentObs);
+    
+    setPagoCuota('1');
+    setPagoMonto('');
   };
 
   const handleGuardarExpediente = async () => {
@@ -185,15 +180,31 @@ const InterludioPanel: React.FC = () => {
     setIsSavingExp(true);
     try {
       const ci = getVal(selectedExpediente, 0);
-      const newValue = ceseStatus.toUpperCase();
       const params = new URLSearchParams();
-      params.append('action', 'save_revision');
-      params.append('ci', ci);
-      params.append('cese', newValue);
-      params.append('observacion_cese', newValue);
+      
+      if (activeInternalTab === 'Cobranzas' || activeInternalTab === 'Pagado') {
+        const cuotasActuales = parseInt(getVal(selectedExpediente, 16).replace(/\D/g, '')) || 0;
+        const montoActual = parseInt(getVal(selectedExpediente, 17).replace(/\D/g, '')) || 0;
+        
+        const nuevasCuotas = parseInt(pagoCuota) || 0;
+        const nuevoMontoCargado = parseInt(pagoMonto.replace(/\./g, '')) || 0;
+        
+        const totalCuotas = cuotasActuales + nuevasCuotas;
+        const totalMonto = montoActual + nuevoMontoCargado;
+
+        params.append('action', 'save_payment');
+        params.append('ci', ci);
+        params.append('cuota_pagada', String(totalCuotas));
+        params.append('monto_pagado', String(totalMonto).replace(/\B(?=(\d{3})+(?!\d))/g, ".")); 
+      } else {
+        params.append('action', 'save_revision');
+        params.append('ci', ci);
+        params.append('cese', ceseStatus.toUpperCase());
+        params.append('observacion', obsEdit.toUpperCase());
+      }
 
       await fetch(INTERLUDIO_SHEETS_URL, { method: 'POST', mode: 'no-cors', body: params });
-      alert('¡EXPEDIENTE SINCRONIZADO!');
+      alert('¡SINCRONIZACIÓN EXITOSA!');
       setSelectedExpediente(null);
       fetchAllData(true);
     } catch (err) {
@@ -204,7 +215,7 @@ const InterludioPanel: React.FC = () => {
     }
   };
 
-  const handleFirmaChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleFirmaChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     if (name === 'cuotas') {
       const plan = PLAN_CUOTAS_MAP[value];
@@ -231,10 +242,6 @@ const InterludioPanel: React.FC = () => {
     }
   };
 
-  const handleLimpiarFirma = () => {
-    setFirmaData(initialFirmaState);
-  };
-
   const handleGuardarFirma = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -242,10 +249,20 @@ const InterludioPanel: React.FC = () => {
       const params = new URLSearchParams();
       Object.entries(firmaData).forEach(([k, v]) => params.append(k, String(v).trim().toUpperCase()));
       await fetch(INTERLUDIO_SHEETS_URL, { method: 'POST', mode: 'no-cors', body: params });
-      handleLimpiarFirma();
-      alert('¡DATOS DE FIRMA ENVIADOS!');
+      setFirmaData(initialFirmaState);
+      alert('¡FIRMA REGISTRADA CON ÉXITO!');
       setTimeout(() => fetchAllData(true), 1500);
-    } catch (err) { alert('Error'); } finally { setLoading(false); }
+    } catch (err) { alert('Error al registrar firma'); } finally { setLoading(false); }
+  };
+
+  const handleMontoInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value.replace(/\D/g, "");
+    if (val === "") {
+      setPagoMonto("");
+      return;
+    }
+    const formatted = val.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    setPagoMonto(formatted);
   };
 
   return (
@@ -254,7 +271,8 @@ const InterludioPanel: React.FC = () => {
         {[
           { id: 'FIRMAS', icon: <ClipboardList size={14} />, label: 'Firmas' },
           { id: 'Cargar Firmas', icon: <Save size={14} />, label: 'Cargar Firmas' },
-          { id: 'Cobranzas', icon: <History size={14} />, label: 'Cobranzas' }
+          { id: 'Cobranzas', icon: <History size={14} />, label: 'Cobranzas' },
+          { id: 'Pagado', icon: <BadgeCheck size={14} />, label: 'Pagado' }
         ].map((tab) => (
           <button key={tab.id} onClick={() => setActiveInternalTab(tab.id)} className={`px-10 py-6 text-[10px] font-black uppercase tracking-[0.2em] transition-all relative flex items-center gap-3 whitespace-nowrap ${activeInternalTab === tab.id ? 'text-[#f0b86a]' : 'text-gray-500 hover:text-white'}`}>
             {tab.icon} {tab.label}
@@ -264,136 +282,107 @@ const InterludioPanel: React.FC = () => {
       </div>
 
       <div className="bg-[#0d0d0d] rounded-[2.5rem] border border-white/5 shadow-2xl p-10 relative min-h-[600px]">
-        {/* VIEW: FIRMAS */}
-        {activeInternalTab === 'FIRMAS' && (
-          <div className="space-y-10 animate-in fade-in">
-             <div className="flex flex-col md:flex-row items-center gap-8 bg-black/40 p-10 rounded-[2.5rem] border border-white/5">
-              <div className="relative flex-1 w-full"><Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-700" size={20} /><input type="text" placeholder="FILTRAR POR C.I, NOMBRE O ASESOR..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-black/60 border border-white/10 rounded-2xl py-6 pl-14 pr-8 text-xs font-black text-white uppercase tracking-[0.2em] focus:border-[#f0b86a] outline-none" /></div>
-              <button onClick={() => fetchAllData()} disabled={isSyncing} className="bg-white/5 hover:bg-white/10 text-white p-6 rounded-2xl border border-white/10 transition-all active:scale-90 shadow-2xl"><RefreshCw size={24} className={isSyncing ? 'animate-spin' : ''} /></button>
-            </div>
-            <div className="overflow-hidden overflow-x-auto">
-              <table className="w-full text-left border-separate border-spacing-y-4 min-w-[1300px]">
-                <thead>
-                  <tr className="bg-[#050505] shadow-lg">
-                    <th className="py-7 px-8 rounded-l-full text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">C.I</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">NOMBRE</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">AGENTE</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">INSTITUCIÓN</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">CIUDAD</th>
-                    <th className="py-7 text-right px-4 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">POSIBLE COBRO</th>
-                    <th className="py-7 text-center px-8 rounded-r-full text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">CESE</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {allRecords.filter(r => JSON.stringify(r).toLowerCase().includes(searchQuery.toLowerCase())).map((res, i) => {
-                    const ceseVal = getVal(res, 15) || 'PENDIENTE';
-                    return (
+        {(activeInternalTab === 'FIRMAS' || activeInternalTab === 'Cobranzas' || activeInternalTab === 'Pagado') && (
+           <div className="space-y-10 animate-in fade-in">
+              <div className="flex flex-col md:flex-row items-center gap-8 bg-black/40 p-10 rounded-[2.5rem] border border-white/5">
+                <div className="relative flex-1 w-full">
+                  <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-700" size={20} />
+                  <input type="text" placeholder="BUSCAR REGISTRO..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-black/60 border border-white/10 rounded-2xl py-6 pl-14 pr-8 text-xs font-black text-white uppercase outline-none focus:border-[#f0b86a]" />
+                </div>
+                <button onClick={() => fetchAllData()} disabled={isSyncing} className="bg-white/5 hover:bg-white/10 text-white p-6 rounded-2xl border border-white/10 transition-all active:scale-90"><RefreshCw size={24} className={isSyncing ? 'animate-spin' : ''} /></button>
+              </div>
+              
+              <div className="overflow-hidden overflow-x-auto custom-scrollbar">
+                <table className={`w-full text-left border-separate border-spacing-y-4 ${activeInternalTab === 'FIRMAS' ? 'min-w-[1200px]' : 'min-w-[2800px]'}`}>
+                  <thead>
+                    <tr className="bg-[#050505] shadow-lg text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                      <th className="py-7 px-8 rounded-l-full whitespace-nowrap">C.I</th>
+                      <th className="py-7 whitespace-nowrap">Nombre</th>
+                      {activeInternalTab !== 'FIRMAS' && <th className="py-7 whitespace-nowrap">F. Nacimiento</th>}
+                      <th className="py-7 whitespace-nowrap">Agente</th>
+                      <th className="py-7 whitespace-nowrap">Institución</th>
+                      <th className="py-7 whitespace-nowrap">Ciudad</th>
+                      {activeInternalTab !== 'FIRMAS' && (
+                        <>
+                          <th className="py-7 whitespace-nowrap">F. Firma</th>
+                          <th className="py-7 whitespace-nowrap">Diligencia</th>
+                          <th className="py-7 whitespace-nowrap">Plan</th>
+                          <th className="py-7 whitespace-nowrap">Total</th>
+                        </>
+                      )}
+                      <th className="py-7 whitespace-nowrap">Posible Cobro</th>
+                      {activeInternalTab !== 'FIRMAS' && (
+                        <>
+                          <th className="py-7 whitespace-nowrap">Firma</th>
+                          <th className="py-7 whitespace-nowrap">Empresa</th>
+                          <th className="py-7 whitespace-nowrap">Proveedor</th>
+                          <th className="py-7 whitespace-nowrap">OBSERVACIÓN</th>
+                        </>
+                      )}
+                      <th className="py-7 px-8 rounded-r-full whitespace-nowrap">CESE</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allRecords
+                      .filter(r => {
+                        const match = JSON.stringify(r).toLowerCase().includes(searchQuery.toLowerCase());
+                        const cuotasPagadas = parseInt(getVal(r, 16).replace(/\D/g, '')) || 0;
+                        const ceseSi = getVal(r, 15).toUpperCase() === 'SI';
+
+                        // FILTRO PARA COBRANZAS: SOLO CESES APLICADOS Y 0 CUOTAS PAGADAS
+                        if (activeInternalTab === 'Cobranzas') {
+                          return match && ceseSi && cuotasPagadas === 0;
+                        }
+                        
+                        // FILTRO PARA PAGADO: SOLO CLIENTES CON 1 O MÁS CUOTAS PAGADAS
+                        if (activeInternalTab === 'Pagado') {
+                          return match && cuotasPagadas > 0;
+                        }
+                        
+                        return match;
+                      })
+                      .map((res, i) => (
                       <tr key={i} onClick={() => handleOpenExpediente(res)} className="group hover:bg-white/5 cursor-pointer transition-all">
-                        <td className="py-10 px-8 text-sm font-black text-[#f0b86a]">{getVal(res, 0)}</td>
-                        <td className="py-10 text-sm font-black text-white italic uppercase tracking-tight">{getVal(res, 1)}</td>
-                        <td className="py-10 text-[10px] font-black text-white/60 uppercase tracking-widest italic">{getVal(res, 3)}</td>
-                        <td className="py-10 text-[10px] font-black text-gray-400 uppercase tracking-widest">{getVal(res, 4)}</td>
-                        <td className="py-10 text-[10px] font-black text-gray-400 uppercase tracking-widest">{getVal(res, 5)}</td>
-                        <td className="py-10 text-right px-4">
-                          <span className="text-[10px] font-black text-[#f0b86a] bg-[#f0b86a]/5 px-4 py-2 rounded-xl border border-[#f0b86a]/10 group-hover:bg-[#f0b86a] group-hover:text-black transition-all">
-                            {formatDate(getVal(res, 10))}
-                          </span>
-                        </td>
-                        <td className="py-10 text-center px-8">
-                          <span className={`text-[9px] font-black px-4 py-1.5 rounded-xl border uppercase tracking-[0.2em] ${ceseVal === 'SI' ? 'bg-green-500/10 text-green-500 border-green-500/20' : ceseVal === 'NO' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-white/5 text-gray-400 border-white/10'}`}>
-                            {ceseVal}
+                        <td className="py-8 px-8 text-sm font-black text-[#f0b86a] whitespace-nowrap">{getVal(res, 0)}</td>
+                        <td className="py-8 text-sm font-black text-white uppercase italic whitespace-nowrap">{getVal(res, 1)}</td>
+                        {activeInternalTab !== 'FIRMAS' && <td className="py-8 text-[11px] font-black text-white/50 whitespace-nowrap">{formatDate(getVal(res, 2))}</td>}
+                        <td className="py-8 text-[11px] font-black text-white/50 uppercase whitespace-nowrap">{getVal(res, 3)}</td>
+                        <td className="py-8 text-[11px] font-black text-gray-500 uppercase whitespace-nowrap">{getVal(res, 4)}</td>
+                        <td className="py-8 text-[11px] font-black text-gray-500 uppercase whitespace-nowrap">{getVal(res, 5)}</td>
+                        {activeInternalTab !== 'FIRMAS' && (
+                          <>
+                            <td className="py-8 text-[11px] font-black text-white/50 whitespace-nowrap">{formatDate(getVal(res, 6))}</td>
+                            <td className="py-8 text-[11px] font-black text-white/50 whitespace-nowrap">{formatDate(getVal(res, 7))}</td>
+                            <td className="py-8 text-sm font-black text-white whitespace-nowrap italic">{getVal(res, 8)} CUOTAS</td>
+                            <td className="py-8 text-sm font-black text-[#f0b86a] whitespace-nowrap">{formatCurrency(getVal(res, 9))}</td>
+                          </>
+                        )}
+                        <td className="py-8 text-[11px] font-black text-white/50 whitespace-nowrap">{formatDate(getVal(res, 10))}</td>
+                        {activeInternalTab !== 'FIRMAS' && (
+                          <>
+                            <td className="py-8 text-[11px] font-black uppercase whitespace-nowrap">
+                              <span className={`px-4 py-1.5 rounded-full ${getVal(res, 11).toUpperCase() === 'SI' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                                {getVal(res, 11)}
+                              </span>
+                            </td>
+                            <td className="py-8 text-[11px] font-black text-gray-500 uppercase whitespace-nowrap">{getVal(res, 12)}</td>
+                            <td className="py-8 text-[11px] font-black text-gray-500 uppercase whitespace-nowrap">{getVal(res, 13)}</td>
+                            <td className="py-8 text-[11px] font-black text-gray-600 uppercase max-w-xs truncate">{getVal(res, 14)}</td>
+                          </>
+                        )}
+                        <td className={`py-8 px-8 text-[11px] font-black whitespace-nowrap ${activeInternalTab === 'FIRMAS' ? '' : 'text-right'}`}>
+                          <span className={`px-4 py-1.5 rounded-full ${getVal(res, 15).toUpperCase() === 'SI' ? 'bg-green-500/10 text-green-500' : 'bg-gray-500/10 text-gray-400'}`}>
+                            {getVal(res, 15)}
                           </span>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+           </div>
         )}
 
-        {/* VIEW: COBRANZAS */}
-        {activeInternalTab === 'Cobranzas' && (
-          <div className="space-y-10 animate-in fade-in">
-             <div className="flex flex-col md:flex-row items-center justify-between gap-8 bg-black/40 p-10 rounded-[2.5rem] border border-white/5">
-              <div className="flex items-center gap-6">
-                <div className="w-16 h-16 bg-green-500/10 rounded-2xl flex items-center justify-center border border-green-500/20">
-                  <DollarSign className="text-green-500" size={32} />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none">Gestión de Cobranzas</h3>
-                  <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] flex items-center gap-2 mt-2">
-                    <CheckCircle2 size={12} className="text-green-500" /> Clientes con CESE Aprobado (SI)
-                  </p>
-                </div>
-              </div>
-              <div className="relative flex-1 max-w-xl">
-                <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-700" size={20} />
-                <input type="text" placeholder="BUSCAR EN COBRANZAS..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-black/60 border border-white/10 rounded-2xl py-6 pl-14 pr-8 text-xs font-black text-white uppercase outline-none focus:border-green-500/40" />
-              </div>
-              <button onClick={() => fetchAllData()} disabled={isSyncing} className="bg-white/5 hover:bg-white/10 text-white p-6 rounded-2xl border border-white/10 transition-all active:scale-90 shadow-xl"><RefreshCw size={24} className={isSyncing ? 'animate-spin' : ''} /></button>
-            </div>
-            
-            <div className="overflow-hidden overflow-x-auto">
-              <table className="w-full text-left border-separate border-spacing-y-4 min-w-[1800px]">
-                <thead>
-                  <tr className="bg-[#050505] shadow-lg">
-                    <th className="py-7 px-8 rounded-l-full text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">C.I</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">CLIENTE</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">ASESOR</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">INSTITUCIÓN</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">CIUDAD</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">F. FIRMA</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">PLAN</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">MONTO TOTAL</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">POSIBLE COBRO</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">EMPRESA</th>
-                    <th className="py-7 text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">PROVEEDOR</th>
-                    <th className="py-7 px-8 rounded-r-full text-center text-[10px] font-black text-gray-500 uppercase tracking-[0.4em]">ESTADO CESE</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {allRecords
-                    .filter(r => {
-                      const matchSearch = JSON.stringify(r).toLowerCase().includes(searchQuery.toLowerCase());
-                      const ceseSi = getVal(r, 15).toUpperCase() === 'SI';
-                      return matchSearch && ceseSi;
-                    })
-                    .map((res, i) => (
-                    <tr key={i} onClick={() => handleOpenExpediente(res)} className="group hover:bg-white/5 cursor-pointer transition-all">
-                      <td className="py-8 px-8 text-sm font-black text-[#f0b86a]">{getVal(res, 0)}</td>
-                      <td className="py-8 text-sm font-black text-white uppercase italic">{getVal(res, 1)}</td>
-                      <td className="py-8 text-[11px] font-black text-white/70 uppercase italic">{getVal(res, 3)}</td>
-                      <td className="py-8 text-[11px] font-black text-gray-500 uppercase">{getVal(res, 4)}</td>
-                      <td className="py-8 text-[11px] font-black text-gray-500 uppercase italic">{getVal(res, 5)}</td>
-                      <td className="py-8 text-[11px] font-black text-gray-400">{formatDate(getVal(res, 6))}</td>
-                      <td className="py-8 text-[11px] font-black text-white uppercase">{getVal(res, 8)} CUOTAS</td>
-                      <td className="py-8 text-[12px] font-black text-green-500 italic">{formatCurrency(getVal(res, 9))}</td>
-                      <td className="py-8 text-[11px] font-black text-white bg-white/5 px-4 rounded-xl">{formatDate(getVal(res, 10))}</td>
-                      <td className="py-8 text-[10px] font-black text-gray-600 uppercase tracking-widest">{getVal(res, 12)}</td>
-                      <td className="py-8 text-[10px] font-black text-gray-600 uppercase tracking-widest">{getVal(res, 13)}</td>
-                      <td className="py-8 px-8 text-center">
-                        <span className="text-[9px] font-black px-4 py-1.5 rounded-xl border uppercase tracking-widest bg-green-500/10 text-green-500 border-green-500/20 shadow-lg shadow-green-500/5">
-                          {getVal(res, 15)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {allRecords.filter(r => getVal(r, 15).toUpperCase() === 'SI').length === 0 && !isSyncing && (
-                <div className="py-32 flex flex-col items-center justify-center opacity-30">
-                  <AlertCircle size={80} className="text-gray-700" />
-                  <p className="mt-8 text-2xl font-black uppercase tracking-widest italic text-gray-600">No hay expedientes con CESE SI</p>
-                  <p className="mt-2 text-sm font-black text-gray-700 uppercase">Asegúrate de marcar SI en la pestaña de Firmas</p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* VIEW: CARGAR FIRMAS */}
         {activeInternalTab === 'Cargar Firmas' && (
           <div className="animate-in fade-in duration-500 space-y-12">
             <form onSubmit={handleGuardarFirma} className="space-y-12">
@@ -423,7 +412,7 @@ const InterludioPanel: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">CIUDAD / LOCALIDAD *</label>
                   <input type="text" name="ciudad" value={firmaData.ciudad} onChange={handleFirmaChange} required className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white focus:border-[#f0b86a]/40 outline-none" />
@@ -436,7 +425,7 @@ const InterludioPanel: React.FC = () => {
                   <label className="text-[10px] font-black text-gray-500 uppercase">FECHA DILIGENCIA</label>
                   <input type="date" name="diligencia" value={firmaData.diligencia} onChange={handleFirmaChange} className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none" />
                 </div>
-                <div className="space-y-1.5 md:col-span-2">
+                <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-[#f0b86a] uppercase">SELECCIÓN DE PLAN DE CUOTAS *</label>
                   <select name="cuotas" value={firmaData.cuotas} onChange={handleFirmaChange} required className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none font-black uppercase">
                     <option value="">SELECCIONAR PLAN...</option>
@@ -494,7 +483,7 @@ const InterludioPanel: React.FC = () => {
               </div>
 
               <div className="flex justify-end items-center gap-4 pt-4">
-                <button type="button" onClick={handleLimpiarFirma} className="bg-[#0a0a0a] hover:bg-[#1a1a1a] text-white py-4 px-12 rounded-lg font-black text-sm transition-all border border-white/5 active:scale-95">
+                <button type="button" onClick={() => setFirmaData(initialFirmaState)} className="bg-[#0a0a0a] hover:bg-[#1a1a1a] text-white py-4 px-12 rounded-lg font-black text-sm transition-all border border-white/5 active:scale-95">
                   Limpiar
                 </button>
                 <button type="submit" disabled={loading} className="bg-[#f0b86a] hover:bg-[#e0a85a] text-black py-4 px-12 rounded-lg font-black text-sm transition-all shadow-lg active:scale-95 disabled:opacity-50 flex items-center gap-3">
@@ -506,107 +495,156 @@ const InterludioPanel: React.FC = () => {
           </div>
         )}
 
-        {/* MODAL EXPEDIENTE */}
         {selectedExpediente && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-2xl animate-in fade-in duration-300">
-            <div className={`bg-[#0a0a0a] w-full ${activeInternalTab === 'Cobranzas' ? 'max-w-md' : 'max-w-7xl'} rounded-[3rem] border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[98vh]`}>
+            <div className={`bg-[#050505] w-full ${(activeInternalTab === 'Cobranzas' || activeInternalTab === 'Pagado') ? 'max-w-2xl' : 'max-w-7xl'} rounded-[3rem] border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[98vh]`}>
               <div className="p-10 flex justify-between items-start border-b border-white/5">
                 <div>
-                  <h2 className="text-4xl md:text-6xl font-black text-[#f0b86a] italic uppercase tracking-tighter leading-none">
-                    {activeInternalTab === 'Cobranzas' ? 'EXPEDIENTE' : 'EXPEDIENTE CLIENTE'}
+                  <h2 className="text-5xl font-black text-[#f0b86a] italic uppercase tracking-tighter leading-none drop-shadow-[0_0_15px_rgba(240,184,106,0.3)]">
+                    EXPEDIENTE
                   </h2>
-                  <p className="text-[11px] font-black text-gray-600 uppercase tracking-[0.4em] mt-3">SISTEMA CLOUD VISTA COMPLETA</p>
+                  <p className="text-[9px] font-black text-gray-600 uppercase tracking-[0.4em] mt-3">MODALIDAD DE GESTIÓN: {activeInternalTab.toUpperCase()}</p>
                 </div>
-                <button onClick={() => setSelectedExpediente(null)} className="w-12 h-12 md:w-16 md:h-16 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center transition-all text-white border border-white/5"><X size={24} /></button>
+                <button onClick={() => setSelectedExpediente(null)} className="w-14 h-14 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center transition-all text-white border border-white/10 shadow-xl"><X size={20} /></button>
               </div>
               
               <div className="flex-1 overflow-y-auto p-10 space-y-12 custom-scrollbar">
-                {activeInternalTab === 'Cobranzas' ? (
-                  /* VISTA SIMPLIFICADA PARA COBRANZAS (SEGÚN IMAGEN DEL USUARIO) */
-                  <div className="space-y-8 bg-[#0d140f] p-10 rounded-[2.5rem] border border-green-500/10 animate-in zoom-in-95">
-                    <div className="flex items-center gap-4 text-green-500 border-b border-green-500/5 pb-6">
-                      <CreditCard size={24} />
-                      <h4 className="text-lg font-black uppercase tracking-[0.2em]">RESUMEN</h4>
+                {(activeInternalTab === 'Cobranzas' || activeInternalTab === 'Pagado') ? (
+                  <div className="space-y-12 animate-in zoom-in-95">
+                    
+                    <div className="bg-[#0a120d] p-10 rounded-[2.5rem] border border-green-500/10 shadow-2xl relative overflow-hidden group">
+                       <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                       
+                       <div className="flex items-center gap-4 mb-10 pb-6 border-b border-white/5">
+                          <CreditCard className="text-[#10b981]" size={28} />
+                          <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase">RESUMEN</h3>
+                       </div>
+
+                       <div className="space-y-10">
+                          <div>
+                             <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] mb-3">TOTAL</p>
+                             <p className="text-6xl font-black text-[#10b981] italic tracking-tighter drop-shadow-[0_0_20px_rgba(16,185,129,0.3)]">
+                               {formatCurrency(getVal(selectedExpediente, 9))}
+                             </p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-8">
+                             <div>
+                                <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] mb-3">PLAN</p>
+                                <p className="text-3xl font-black text-white italic uppercase tracking-widest">
+                                   {getVal(selectedExpediente, 8)} CUOTAS
+                                </p>
+                             </div>
+
+                             <div>
+                                <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] mb-3">FALTANTE</p>
+                                <p className="text-3xl font-black text-red-500 italic uppercase tracking-widest drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]">
+                                   {formatCurrency(
+                                      Math.max(0, (parseInt(getVal(selectedExpediente, 9).replace(/\D/g, '')) || 0) - (parseInt(getVal(selectedExpediente, 17).replace(/\D/g, '')) || 0))
+                                   )}
+                                </p>
+                             </div>
+                          </div>
+                       </div>
                     </div>
-                    <div className="space-y-10">
-                      <div>
-                        <p className="text-[10px] font-black text-green-500/40 uppercase mb-3 tracking-[0.3em]">TOTAL</p>
-                        <p className="text-5xl font-black text-green-500 italic drop-shadow-[0_0_15px_rgba(34,197,94,0.3)]">
-                          {formatCurrency(getVal(selectedExpediente, 9))}
-                        </p>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="bg-white/5 p-8 rounded-3xl border border-white/5 space-y-3">
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">CUOTAS PAGADAS</p>
+                          <div className="flex items-center gap-4">
+                            <div className="p-3 bg-[#f0b86a]/10 rounded-xl">
+                              <History size={20} className="text-[#f0b86a]" />
+                            </div>
+                            <p className="text-3xl font-black text-white">{getVal(selectedExpediente, 16) || '0'}</p>
+                          </div>
                       </div>
-                      <div>
-                        <p className="text-[10px] font-black text-green-500/40 uppercase mb-3 tracking-[0.3em]">PLAN</p>
-                        <p className="text-2xl font-black text-white uppercase italic">
-                          {getVal(selectedExpediente, 8)} CUOTAS
-                        </p>
+                      <div className="bg-white/5 p-8 rounded-3xl border border-white/5 space-y-3">
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">MONTO TOTAL COBRADO</p>
+                          <div className="flex items-center gap-4">
+                            <div className="p-3 bg-green-500/10 rounded-xl">
+                              <Wallet size={20} className="text-green-500" />
+                            </div>
+                            <p className="text-2xl font-black text-white">{formatCurrency(getVal(selectedExpediente, 17))}</p>
+                          </div>
                       </div>
+                    </div>
+
+                    <div className="bg-[#0a0a0a] p-10 rounded-[2.5rem] border border-white/5 space-y-10 shadow-inner">
+                       <div className="space-y-4">
+                         <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] ml-2">NUEVA CUOTA A REGISTRAR</label>
+                         <div className="relative group">
+                            <select 
+                                value={pagoCuota} 
+                                onChange={(e) => setPagoCuota(e.target.value)} 
+                                className="w-full bg-black border border-white/10 rounded-2xl p-7 text-2xl font-black text-white uppercase outline-none appearance-none cursor-pointer focus:border-[#f0b86a]/40 shadow-inner"
+                            >
+                                {[1, 2, 3, 4, 5, 6].map(num => <option key={num} value={String(num)}>{num} CUOTA</option>)}
+                            </select>
+                            <ChevronDown size={24} className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-700 pointer-events-none" />
+                         </div>
+                       </div>
+                       
+                       <div className="space-y-4">
+                         <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] ml-2">NUEVO MONTO A COBRAR (GS)</label>
+                         <input 
+                            type="text" 
+                            value={pagoMonto} 
+                            onChange={handleMontoInput} 
+                            placeholder="0"
+                            className="w-full bg-black border border-white/10 rounded-2xl py-7 px-8 text-3xl font-black text-white outline-none focus:border-[#10b981]/40 shadow-inner" 
+                         />
+                       </div>
+
+                       <button 
+                         onClick={handleGuardarExpediente} 
+                         disabled={isSavingExp || !pagoMonto}
+                         className="w-full bg-[#10b981] hover:bg-[#0ea876] text-white py-9 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.3em] shadow-[0_0_30px_rgba(16,185,129,0.2)] flex items-center justify-center gap-4 transition-all active:scale-[0.98] disabled:opacity-20"
+                       >
+                         {isSavingExp ? <Loader2 className="animate-spin" /> : <ArrowRightCircle size={24} />} 
+                         REGISTRAR Y SUMAR COBRO
+                       </button>
                     </div>
                   </div>
                 ) : (
-                  /* VISTA COMPLETA PARA FIRMAS */
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-                      <div className="space-y-8 bg-white/5 p-8 rounded-[2.5rem] border border-white/5">
-                        <div className="flex items-center gap-4 text-[#f0b86a] border-b border-white/5 pb-4"><User size={20} /><h4 className="text-[12px] font-black uppercase tracking-widest">IDENTIFICACIÓN</h4></div>
-                        <div className="space-y-6">
-                          <div><p className="text-[9px] font-black text-gray-700 uppercase mb-1">NOMBRE</p><p className="text-3xl font-black text-white italic uppercase">{getVal(selectedExpediente, 1)}</p></div>
-                          <div><p className="text-[9px] font-black text-gray-700 uppercase mb-1">C.I</p><p className="text-4xl font-black text-[#f0b86a]">{getVal(selectedExpediente, 0)}</p></div>
-                          <div><p className="text-[9px] font-black text-gray-700 uppercase mb-1">NACIMIENTO</p><p className="text-xl font-black text-white">{formatDate(getVal(selectedExpediente, 2))}</p></div>
-                        </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                      <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 space-y-4">
+                        <div className="flex items-center gap-3 text-[#f0b86a]"><User size={20} /><h4 className="text-[10px] font-black uppercase tracking-widest">Identificación</h4></div>
+                        <p className="text-3xl font-black text-white uppercase italic">{getVal(selectedExpediente, 1)}</p>
+                        <p className="text-[10px] font-black text-gray-500 tracking-[0.3em]">C.I: {getVal(selectedExpediente, 0)}</p>
                       </div>
-                      <div className="space-y-8 bg-white/5 p-8 rounded-[2.5rem] border border-white/5">
-                        <div className="flex items-center gap-4 text-[#f0b86a] border-b border-white/5 pb-4"><Briefcase size={20} /><h4 className="text-[12px] font-black uppercase tracking-widest">GESTIÓN</h4></div>
-                        <div className="space-y-6">
-                          <div><p className="text-[9px] font-black text-gray-700 uppercase mb-1">INSTITUCIÓN</p><p className="text-xl font-black text-white uppercase">{getVal(selectedExpediente, 4)}</p></div>
-                          <div><p className="text-[9px] font-black text-gray-700 uppercase mb-1">CIUDAD</p><p className="text-xl font-black text-white uppercase">{getVal(selectedExpediente, 5)}</p></div>
-                          <div><p className="text-[9px] font-black text-gray-700 uppercase mb-1">AGENTE</p><p className="text-xl font-black text-[#f0b86a] italic">{getVal(selectedExpediente, 3)}</p></div>
-                        </div>
+                      <div className="bg-white/5 p-8 rounded-[2.5rem] border border-white/5 space-y-4">
+                        <div className="flex items-center gap-3 text-[#f0b86a]"><Briefcase size={20} /><h4 className="text-[10px] font-black uppercase tracking-widest">Procedencia</h4></div>
+                        <p className="text-xl font-black text-white uppercase italic">{getVal(selectedExpediente, 4)}</p>
+                        <p className="text-[10px] font-black text-gray-500 tracking-[0.3em]">{getVal(selectedExpediente, 5)}</p>
                       </div>
-                      <div className="space-y-8 bg-[#0d140f] p-8 rounded-[2.5rem] border border-green-500/10">
-                        <div className="flex items-center gap-4 text-green-500 border-b border-green-500/5 pb-4"><CreditCard size={20} /><h4 className="text-[12px] font-black uppercase tracking-widest">RESUMEN</h4></div>
-                        <div className="space-y-6">
-                          <div><p className="text-[9px] font-black text-green-500/40 uppercase mb-1">TOTAL</p><p className="text-4xl font-black text-green-500">{formatCurrency(getVal(selectedExpediente, 9))}</p></div>
-                          <div><p className="text-[9px] font-black text-green-500/40 uppercase mb-1">PLAN</p><p className="text-xl font-black text-white uppercase">{getVal(selectedExpediente, 8)} CUOTAS</p></div>
-                          <div><p className="text-[9px] font-black text-green-500/40 uppercase mb-1">POSIBLE COBRO</p><p className="text-xl font-black text-white">{formatDate(getVal(selectedExpediente, 10))}</p></div>
-                        </div>
+                      <div className="bg-[#0d140f] p-8 rounded-[2.5rem] border border-green-500/10 space-y-4 text-center">
+                        <p className="text-[9px] font-black text-green-500/40 uppercase tracking-widest">Cartera de Operación</p>
+                        <p className="text-4xl font-black text-green-500 italic drop-shadow-[0_0_10px_rgba(34,197,94,0.3)]">{formatCurrency(getVal(selectedExpediente, 9))}</p>
                       </div>
                     </div>
                     
-                    <div className="pt-10 border-t border-white/5 grid grid-cols-1 lg:grid-cols-2 gap-10">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                       <div className="space-y-6">
-                        <div className="flex items-center gap-4 text-[#f0b86a]"><ShieldCheck size={24} /><h4 className="text-lg font-black uppercase tracking-tighter">GESTIÓN DE CESE</h4></div>
+                        <div className="flex items-center gap-4 text-[#f0b86a]"><ShieldCheck size={24} /><h4 className="text-xl font-black uppercase italic tracking-tighter">Estado de Cese</h4></div>
                         <div className="relative">
-                           <select 
-                             value={ceseStatus} 
-                             onChange={(e) => setCeseStatus(e.target.value)}
-                             className={`w-full bg-black/60 rounded-[1.5rem] border border-white/10 p-6 text-xl font-black uppercase tracking-widest outline-none appearance-none cursor-pointer focus:border-[#f0b86a]/40 shadow-inner ${ceseStatus === 'SI' ? 'text-green-500' : ceseStatus === 'NO' ? 'text-red-500' : 'text-gray-400'}`}
-                           >
-                             <option value="PENDIENTE">PENDIENTE</option>
-                             <option value="SI">SI (APLICADO)</option>
-                             <option value="NO">NO (DENEGADO)</option>
-                           </select>
-                           <ChevronDown size={24} className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-600 pointer-events-none" />
+                            <select value={ceseStatus} onChange={(e) => setCeseStatus(e.target.value)} className={`w-full bg-black/60 rounded-[1.5rem] border border-white/10 p-7 text-xl font-black uppercase tracking-widest outline-none appearance-none cursor-pointer ${ceseStatus === 'SI' ? 'text-green-500' : 'text-gray-400'}`}>
+                                <option value="PENDIENTE">PENDIENTE</option>
+                                <option value="SI">SI (APLICADO)</option>
+                                <option value="NO">NO (DENEGADO)</option>
+                            </select>
+                            <ChevronDown size={24} className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-700 pointer-events-none" />
                         </div>
                       </div>
                       
                       <div className="space-y-6">
-                        <div className="flex items-center gap-4 text-[#f0b86a]"><MessageSquare size={24} /><h4 className="text-lg font-black uppercase tracking-tighter">OBSERVACIÓN / NOTAS</h4></div>
-                        <textarea 
-                          value={obsEdit} 
-                          onChange={(e) => setObsEdit(e.target.value)} 
-                          placeholder="Sin observaciones..." 
-                          className="w-full bg-black/60 rounded-[1.5rem] border border-white/10 p-6 min-h-[120px] text-lg font-bold text-white uppercase italic tracking-tighter outline-none focus:border-[#f0b86a]/40 shadow-inner" 
-                        />
+                        <div className="flex items-center gap-4 text-[#f0b86a]"><MessageSquare size={24} /><h4 className="text-xl font-black uppercase italic tracking-tighter">Observación Maestro</h4></div>
+                        <textarea value={obsEdit} onChange={(e) => setObsEdit(e.target.value)} placeholder="Añadir notas del expediente..." className="w-full bg-black/60 rounded-[1.5rem] border border-white/10 p-7 min-h-[150px] text-lg font-bold text-white uppercase italic tracking-tighter outline-none focus:border-[#f0b86a] shadow-inner" />
                       </div>
                     </div>
 
-                    <button 
-                      onClick={handleGuardarExpediente} 
-                      disabled={isSavingExp} 
-                      className="w-full bg-[#f0b86a] hover:bg-[#e0a85a] text-black py-10 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.4em] shadow-2xl flex items-center justify-center gap-5 transition-all active:scale-[0.98] disabled:opacity-50"
-                    >
-                      {isSavingExp ? <Loader2 className="animate-spin" /> : <Save size={24} />} SINCRONIZAR EXPEDIENTE
+                    <button onClick={handleGuardarExpediente} disabled={isSavingExp} className="w-full bg-[#f0b86a] hover:bg-[#e0a85a] text-black py-10 rounded-[2.5rem] font-black uppercase tracking-[0.5em] shadow-2xl flex items-center justify-center gap-5 transition-all active:scale-[0.98]">
+                      {isSavingExp ? <Loader2 className="animate-spin" /> : <Save size={24} />} SINCRONIZAR EXPEDIENTE MAESTRO
                     </button>
                   </>
                 )}
