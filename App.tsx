@@ -8,6 +8,7 @@ import CustomerInsights from './components/CustomerInsights.tsx';
 import CargarPanel from './components/CargarPanel.tsx';
 import ExcelImportPanel from './components/ExcelImportPanel.tsx';
 import InterludioPanel from './components/InterludioPanel.tsx';
+import DashboardInterludio from './components/DashboardInterludio.tsx';
 import LoginGate from './components/LoginGate.tsx';
 import { ShieldCheck, AlertCircle, Lock, LayoutDashboard } from 'lucide-react';
 
@@ -53,19 +54,7 @@ const App: React.FC = () => {
       case 'Dashboard Captación':
         return <CustomerInsights userRole={userRole} />;
       case 'Dashboard Interludio':
-        return (
-          <div className="flex flex-col items-center justify-center py-40 animate-in fade-in duration-1000">
-            <div className="w-32 h-32 bg-white/5 rounded-[3rem] border border-white/5 flex items-center justify-center mb-10 shadow-2xl">
-              <LayoutDashboard size={64} className="text-gray-800" />
-            </div>
-            <h2 className="text-6xl font-black text-white italic uppercase tracking-tighter text-center">
-              Dashboard Interludio
-            </h2>
-            <p className="text-gray-600 text-[10px] font-black uppercase tracking-[0.5em] mt-6 border-t border-white/5 pt-6">
-              Módulo en Fase de Desarrollo
-            </p>
-          </div>
-        );
+        return <DashboardInterludio />;
       case 'Captación':
         return userRole === 'admin' ? <CargarPanel /> : <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
       case 'Interludio':
