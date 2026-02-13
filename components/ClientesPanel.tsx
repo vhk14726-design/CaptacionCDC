@@ -17,11 +17,13 @@ import {
   Scan,
   Database,
   Fingerprint,
-  Zap
+  Zap,
+  Calendar,
+  IdCard
 } from 'lucide-react';
 import { supabase } from '../supabase.ts';
 
-const GOOGLE_SHEETS_CAPTACION = 'https://script.google.com/macros/s/AKfycbzffCE6i9aLH2Wmo2R64kYBxMhZmENUoJR1pHVYxbeD5OMdA-yIvqxNVGcaaL-B-v31/exec';
+const GOOGLE_SHEETS_CAPTACION = 'https://script.google.com/macros/s/AKfycbffCE6i9aLH2Wmo2R64kYBxMhZmENUoJR1pHVYxbeD5OMdA-yIvqxNVGcaaL-B-v31/exec';
 
 interface ClientRecord {
   ci: string;
@@ -96,8 +98,7 @@ const ClientesPanel: React.FC = () => {
     setVerifyError(null);
     setVerifyResult(null);
     
-    // Simulación de pasos para "que se vea bonito"
-    const steps = ["Iniciando protocolos...", "Conectando con GFV Node...", "Buscando hash de identidad...", "Extrayendo metadatos..."];
+    const steps = ["Iniciando protocolos...", "Conectando con GFV Node...", "Analizando Identidad...", "Extrayendo Datos..."];
     
     for (const step of steps) {
         setVerifyStep(step);
@@ -225,7 +226,7 @@ const ClientesPanel: React.FC = () => {
               {filtered.map((client, i) => (
                 <tr key={i} className="group hover:bg-white/5 transition-all">
                   <td className="py-10 px-12">
-                    <span className={`text-[9px] font-black px-3 py-1.5 rounded-lg border uppercase tracking-widest ${client.source === 'EXCEL' ? 'text-purple-400 bg-purple-400/10 border-purple-400/20' : 'text-green-400 bg-green-400/10 border-green-400/20'}`}>
+                    <span className={`text-[9px] font-black px-3 py-1.5 rounded-lg border uppercase tracking-widest ${client.source === 'EXCEL' ? 'text-purple-500 bg-purple-500/10 border-purple-500/20' : 'text-green-400 bg-green-400/10 border-green-400/20'}`}>
                       {client.source}
                     </span>
                   </td>
@@ -290,16 +291,12 @@ const ClientesPanel: React.FC = () => {
                         >
                             Ejecutar Análisis
                         </button>
-                        <div className="flex items-center gap-2 justify-center text-[10px] font-black text-gray-700 uppercase tracking-widest">
-                            <Info size={12} /> Consultando base de datos gubernamental encriptada
-                        </div>
                     </div>
                  )}
 
                  {verifying && (
                     <div className="py-20 flex flex-col items-center justify-center space-y-10 animate-in zoom-in-95">
                         <div className="relative w-40 h-40">
-                            {/* Radar Animation */}
                             <div className="absolute inset-0 border-4 border-purple-500/10 rounded-full"></div>
                             <div className="absolute inset-0 border-t-4 border-purple-500 rounded-full animate-spin"></div>
                             <div className="absolute inset-4 border-2 border-purple-500/20 rounded-full animate-pulse"></div>
@@ -309,11 +306,6 @@ const ClientesPanel: React.FC = () => {
                         </div>
                         <div className="text-center space-y-3">
                             <p className="text-xl font-black text-white uppercase italic tracking-tighter animate-pulse">{verifyStep}</p>
-                            <div className="flex gap-1 justify-center">
-                                <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce"></div>
-                                <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
-                                <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce [animation-delay:0.4s]"></div>
-                            </div>
                         </div>
                     </div>
                  )}
@@ -323,53 +315,73 @@ const ClientesPanel: React.FC = () => {
                         <div className="bg-red-500/10 border border-red-500/20 p-8 rounded-[2rem] flex flex-col items-center text-center gap-4">
                             <AlertCircle size={40} className="text-red-500" />
                             <h4 className="text-lg font-black text-white uppercase tracking-tighter">{verifyError}</h4>
-                            <p className="text-[10px] font-bold text-gray-500 uppercase leading-relaxed">Verifica el número e intenta nuevamente. Si el error persiste, la sesión GFV podría estar vencida.</p>
                         </div>
                         <button onClick={() => { setVerifyError(null); setVerifyId(""); }} className="w-full bg-white/5 hover:bg-white/10 py-4 rounded-xl text-[10px] font-black uppercase text-white tracking-widest border border-white/10 transition-all">Reintentar</button>
                     </div>
                  )}
 
                  {verifyResult && (
-                    <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-8">
+                    <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-8 pb-4">
                        <div className="bg-gradient-to-br from-[#121212] to-black p-10 rounded-[2.5rem] border border-purple-500/30 relative overflow-hidden group">
                           <div className="absolute top-0 right-0 p-6 opacity-20">
                              <CheckCircle2 size={48} className="text-green-500" />
                           </div>
                           
                           <div className="space-y-10 relative z-10">
-                             <div>
-                                <p className="text-[10px] font-black text-gray-600 uppercase tracking-[0.4em] mb-3">CIUDADANO LOCALIZADO</p>
-                                <div className="flex items-center justify-between">
-                                   <h4 className="text-4xl font-black text-white uppercase italic tracking-tighter leading-none">
-                                      {verifyResult.nombre}
-                                   </h4>
-                                   <button onClick={() => copyToClipboard(verifyResult.nombre)} className="p-3 bg-white/5 hover:bg-white/10 rounded-xl transition-all">
-                                      <Copy size={16} className="text-purple-400" />
-                                   </button>
+                             <div className="space-y-8">
+                                <p className="text-[10px] font-black text-gray-600 uppercase tracking-[0.4em] mb-4">IDENTIDAD LOCALIZADA</p>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                   <div className="space-y-2">
+                                      <p className="text-[8px] font-black text-purple-500 uppercase tracking-widest flex items-center gap-2">
+                                         <User size={10} /> Nombres
+                                      </p>
+                                      <h4 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-tight">
+                                         {verifyResult.nombres}
+                                      </h4>
+                                   </div>
+                                   <div className="space-y-2">
+                                      <p className="text-[8px] font-black text-purple-500 uppercase tracking-widest flex items-center gap-2">
+                                         <User size={10} /> Apellidos
+                                      </p>
+                                      <h4 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-tight">
+                                         {verifyResult.apellidos}
+                                      </h4>
+                                   </div>
                                 </div>
-                             </div>
 
-                             <div className="grid grid-cols-2 gap-8 border-t border-white/5 pt-8">
-                                <div>
-                                   <p className="text-[9px] font-black text-gray-600 uppercase tracking-[0.3em] mb-2">IDENTIFICACIÓN</p>
-                                   <p className="text-2xl font-black text-purple-400 font-mono tracking-tighter">
-                                      {parseInt(verifyResult.cedula).toLocaleString()}
-                                   </p>
-                                </div>
-                                <div>
-                                   <p className="text-[9px] font-black text-gray-600 uppercase tracking-[0.3em] mb-2">SISTEMA ORIGEN</p>
-                                   <div className="flex items-center gap-2">
-                                       <Zap size={14} className="text-yellow-500" />
-                                       <p className="text-lg font-black text-white italic">GFV NODE</p>
+                                <div className="grid grid-cols-2 gap-8 border-t border-white/5 pt-8">
+                                   <div className="space-y-2">
+                                      <p className="text-[8px] font-black text-gray-600 uppercase tracking-widest flex items-center gap-2">
+                                         <IdCard size={10} /> Cédula
+                                      </p>
+                                      <p className="text-xl font-black text-white font-mono tracking-tighter">
+                                         {parseInt(verifyResult.cedula).toLocaleString('es-PY')}
+                                      </p>
+                                   </div>
+                                   <div className="space-y-2">
+                                      <p className="text-[8px] font-black text-gray-600 uppercase tracking-widest flex items-center gap-2">
+                                         <Calendar size={10} /> Fecha de Nacimiento
+                                      </p>
+                                      <p className="text-xl font-black text-white italic">
+                                         {verifyResult.fecha_nacimiento}
+                                      </p>
                                    </div>
                                 </div>
                              </div>
+
+                             <button 
+                                onClick={() => copyToClipboard(`${verifyResult.nombres} ${verifyResult.apellidos} | CI: ${verifyResult.cedula} | Nacimiento: ${verifyResult.fecha_nacimiento}`)}
+                                className="w-full flex items-center justify-center gap-3 py-4 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition-all text-[10px] font-black text-white uppercase tracking-widest"
+                             >
+                                <Copy size={14} className="text-purple-400" /> Copiar Perfil Completo
+                             </button>
                           </div>
 
-                          <div className="absolute bottom-0 left-0 w-full h-1 bg-gradient-to-r from-purple-500 to-blue-500"></div>
+                          <div className="absolute bottom-0 left-0 w-full h-1.5 bg-gradient-to-r from-purple-500 via-blue-500 to-green-500"></div>
                        </div>
                        
-                       <button onClick={() => { setVerifyResult(null); setVerifyId(""); }} className="w-full py-4 text-[10px] font-black text-gray-500 uppercase tracking-widest hover:text-white transition-colors">Realizar Nueva Consulta</button>
+                       <button onClick={() => { setVerifyResult(null); setVerifyId(""); }} className="w-full py-4 text-[10px] font-black text-gray-700 uppercase tracking-widest hover:text-white transition-colors">Realizar Nueva Consulta</button>
                     </div>
                  )}
               </div>

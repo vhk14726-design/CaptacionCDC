@@ -7,14 +7,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { cedula } = req.body;
-    let VERIFY_URL = process.env.GFV_VERIFY_URL || "https://app.gfv.com.py/OUVBUUVMeVYvSlNtVDVKejRkeTVMaU96NzBzQzBVc3RzUGU3a2FXQnlhTkZHYnUybjdMU0RicHRyNEJvQVpERHpieHlTNExXVTRWSFhlUG9RS2kxL1E9PTo6D6FEUqP-ZlJSl-qgC012mg/";
+    // URL base proporcionada por el usuario
+    let VERIFY_URL = "https://app.gfv.com.py/OUVBUUVMeVYvSlNtVDVKejRkeTVMaU96NzBzQzBVc3RzUGU3a2FXQnlhTkZHYnUybjdMU0RicHRyNEJvQVpERHpieHlTNExXVTRWSFhlUG9RS2kxL1E9PTo6D6FEUqP-ZlJSl-qgC012mg/";
     const SESSION_COOKIE = process.env.GFV_COOKIE || "";
 
     if (!cedula) return res.status(400).json({ ok: false, mensaje: "Cédula requerida" });
 
     const cleanCI = String(cedula).replace(/\D/g, "");
 
-    // Construcción de la URL final pegando la cédula al final del hash
+    // Generar URL final con la CI al final después del "/"
     let finalUrl = VERIFY_URL.trim();
     if (!finalUrl.endsWith('/')) finalUrl += '/';
     finalUrl += cleanCI;
@@ -40,32 +41,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(401).json({ ok: false, mensaje: "SESIÓN EXPIRADA. Actualiza el PHPSESSID en Vercel." });
     }
 
-    const rawText = await response.text();
-    const cleanT = (s: string) => s.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    const rawHtml = await response.text();
+    
+    // Limpieza de comentarios HTML para evitar errores de parseo
+    const sanitizedHtml = rawHtml.replace(/<!--[\s\S]*?-->/g, "");
 
-    // Lógica de extracción (Busca patrones de nombre en el HTML devuelto por ese hash)
-    let nombre = "";
-    const patterns = [
-        /Nombre[s]?[:\s]+(?:<\/b>|<td>|<span>)?\s*([^<|\n|\r|;]+)/i,
-        /<td>\s*Nombres:\s*<\/td>\s*<td>\s*([^<]+)/i,
-        /cliente[:\s]+([^<]+)/i
-    ];
+    /**
+     * Motor de extracción V14: Localiza etiquetas y extrae valores de inputs asociados
+     */
+    const extractField = (label: string) => {
+        const lowerLabel = label.toLowerCase();
+        const labelPos = sanitizedHtml.toLowerCase().indexOf(lowerLabel);
+        if (labelPos === -1) return "";
 
-    for (const p of patterns) {
-        const match = rawText.match(p);
-        if (match && match[1]) {
-            nombre = cleanT(match[1]);
-            break;
+        const chunk = sanitizedHtml.substring(labelPos, labelPos + 800);
+        
+        // Definir límites para no saltar a otros campos
+        const stopLabels = ["nombres", "apellidos", "fecha de nacimiento", "sexo", "nacionalidad", "estado civil", "calle 1"];
+        const otherLabels = stopLabels.filter(l => l !== lowerLabel);
+        const boundaryRegex = new RegExp(`(?:${otherLabels.join("|")})`, "i");
+        
+        const boundaryMatch = chunk.substring(label.length).search(boundaryRegex);
+        const searchZone = boundaryMatch !== -1 ? chunk.substring(0, boundaryMatch + label.length) : chunk;
+
+        const valueRegex = /value\s*=\s*["']([^"']*)["']/gi;
+        let matches;
+        const results: string[] = [];
+
+        while ((matches = valueRegex.exec(searchZone)) !== null) {
+            const val = matches[1].trim();
+            if (val && !results.includes(val) && val !== "-->") results.push(val);
         }
-    }
 
-    if (nombre) {
+        return results.join(" ").trim();
+    };
+
+    const nombres = extractField("Nombres");
+    const apellidos = extractField("Apellidos");
+    const fechaNac = extractField("Fecha de Nacimiento");
+
+    if (nombres || apellidos) {
         return res.status(200).json({
             ok: true,
             result: {
-                nombre: nombre.toUpperCase(),
+                nombres: nombres.toUpperCase(),
+                apellidos: apellidos.toUpperCase(),
                 cedula: cleanCI,
-                fecha_nacimiento: "SISTEMA GFV",
+                fecha_nacimiento: fechaNac || "NO ENCONTRADO",
                 estado: "ACTIVO"
             }
         });
@@ -73,11 +95,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(404).json({ 
         ok: false, 
-        mensaje: "Cédula no encontrada o sin datos disponibles en GFV.",
-        debug: rawText.substring(0, 300)
+        mensaje: "No se localizaron datos. Verifica la sesión o la cédula.",
+        debug: sanitizedHtml.substring(0, 100)
     });
 
   } catch (e: any) {
-    return res.status(500).json({ ok: false, mensaje: "Error de red: " + e.message });
+    return res.status(500).json({ ok: false, mensaje: "Error crítico: " + e.message });
   }
 }

@@ -18,10 +18,15 @@ import {
   Wallet,
   CreditCard,
   Layout,
-  TrendingDown
+  TrendingDown,
+  Scan,
+  Zap,
+  CheckCircle2,
+  AlertCircle,
+  Calendar,
+  IdCard
 } from 'lucide-react';
 
-// URL del script de Google Sheets para Interludio (Actualizada por el usuario)
 const INTERLUDIO_SHEETS_URL = 'https://script.google.com/macros/s/AKfycbx7zaAIKjgfvsSNJ9W0L84dAkByePgVdEPiiJEWODW4IMSgBfgxFhSbmg1VEoHB7bgGqA/exec';
 
 const PLAN_CUOTAS_MAP: Record<string, { cuota: string, total: string }> = {
@@ -47,6 +52,10 @@ const InterludioPanel: React.FC = () => {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [allRecords, setAllRecords] = useState<any[]>([]);
+
+  // Estados del Auto-Scanner
+  const [isAutoVerifying, setIsAutoVerifying] = useState(false);
+  const [autoVerifyStatus, setAutoVerifyStatus] = useState<'success' | 'error' | null>(null);
 
   const agentesPredefinidos = [
     'ALEXANDER MACIEL', 'ANDRES OJEDA', 'ARIEL GRISSETTI', 'DELY GONZALEZ',
@@ -90,24 +99,10 @@ const InterludioPanel: React.FC = () => {
     if (Array.isArray(row)) return String(row[index] || '').trim();
     
     const mappingKeys = [
-      "ci",                       // 0  (Col A)
-      "nombre_cliente",           // 1  (Col B)
-      "fecha_nacimiento",         // 2  (Col C)
-      "agente",                   // 3  (Col D)
-      "institucion",              // 4  (Col E)
-      "ciudad",                   // 5  (Col F)
-      "fecha_de_firma",           // 6  (Col G)
-      "diligencia",               // 7  (Col H)
-      "cuota",                    // 8  (Col I) - PLAN DE CUOTAS
-      "total",                    // 9  (Col J) - MONTO TOTAL
-      "fecha_posible_cobro",      // 10 (Col K)
-      "firma",                    // 11 (Col L)
-      "empresa",                  // 12 (Col M)
-      "proveedor",                // 13 (Col N)
-      "observacion",              // 14 (Col O)
-      "cese",                     // 15 (Col P)
-      "cuota_pag",                // 16 (Col Q) - TITULADA 'cuotapag' EN SHEETS
-      "pagado"                    // 17 (Col R) - TITULADA 'pagado' EN SHEETS
+      "ci", "nombre_cliente", "fecha_nacimiento", "agente", "institucion", 
+      "ciudad", "fecha_de_firma", "diligencia", "cuota", "total", 
+      "fecha_posible_cobro", "firma", "empresa", "proveedor", "observacion", 
+      "cese", "cuota_pag", "pagado"
     ];
 
     const key = mappingKeys[index];
@@ -118,12 +113,11 @@ const InterludioPanel: React.FC = () => {
     for (const k of keys) {
       if (normalize(k) === targetNorm) return String(row[k]).trim();
     }
-    
     return '';
   };
 
   const formatDate = (val: any) => {
-    if (!val || val === 'N/A' || val === '' || val === 'undefined' || val === '-' || val === 'null') return '-';
+    if (!val || val === 'N/A' || val === '') return '-';
     try {
       if (!isNaN(val) && typeof val !== 'boolean') {
         const date = new Date(Math.round((Number(val) - 25569) * 86400 * 1000));
@@ -135,7 +129,7 @@ const InterludioPanel: React.FC = () => {
     } catch (e) { return String(val); }
   };
 
-  const formatCurrency = (val: any) => {
+  const formatCurrency = (val: number | string) => {
     const num = parseInt(String(val).replace(/[^0-9]/g, ''));
     if (isNaN(num) || num === 0) return 'Gs. 0';
     return new Intl.NumberFormat('es-PY', { style: 'currency', currency: 'PYG', minimumFractionDigits: 0 }).format(num).replace('PYG', 'Gs.');
@@ -164,15 +158,41 @@ const InterludioPanel: React.FC = () => {
     }
   }, [activeInternalTab, fetchAllData]);
 
+  // Función Maestra de Auto-Verificación
+  const handleAutoVerifyCI = async () => {
+    if (!firmaData.ci || isAutoVerifying) return;
+    setIsAutoVerifying(true);
+    setAutoVerifyStatus(null);
+    try {
+      const r = await fetch("/api/cedula/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cedula: firmaData.ci }),
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.mensaje);
+
+      // Estirar datos al formulario: Nombres + Apellidos y Fecha (como texto DD/MM/AAAA)
+      setFirmaData(prev => ({
+        ...prev,
+        nombre_cliente: `${j.result.nombres} ${j.result.apellidos}`.toUpperCase(),
+        fecha_nacimiento: j.result.fecha_nacimiento // Se carga directamente el formato de la página
+      }));
+      setAutoVerifyStatus('success');
+    } catch (err) {
+      setAutoVerifyStatus('error');
+    } finally {
+      setIsAutoVerifying(false);
+    }
+  };
+
   const handleOpenExpediente = (res: any) => {
     const currentCese = getVal(res, 15);
     const currentObs = getVal(res, 14);
-    
     const status = (currentCese.toUpperCase() === 'SI' || currentCese.toUpperCase() === 'NO') ? currentCese.toUpperCase() : 'PENDIENTE';
     setSelectedExpediente(res);
     setCeseStatus(status);
     setObsEdit(currentObs);
-    
     setPagoCuota('1');
     setPagoMonto('');
   };
@@ -183,17 +203,13 @@ const InterludioPanel: React.FC = () => {
     try {
       const ci = getVal(selectedExpediente, 0);
       const params = new URLSearchParams();
-      
       if (activeInternalTab === 'Cobranzas' || activeInternalTab === 'Pagado') {
         const cuotasActuales = parseInt(getVal(selectedExpediente, 16).replace(/\D/g, '')) || 0;
         const montoActual = parseInt(getVal(selectedExpediente, 17).replace(/\D/g, '')) || 0;
-        
         const nuevasCuotas = parseInt(pagoCuota) || 0;
         const nuevoMontoCargado = parseInt(pagoMonto.replace(/\./g, '')) || 0;
-        
         const totalCuotas = cuotasActuales + nuevasCuotas;
         const totalMonto = montoActual + nuevoMontoCargado;
-
         params.append('action', 'save_payment');
         params.append('ci', ci);
         params.append('cuota_pagada', String(totalCuotas));
@@ -204,17 +220,11 @@ const InterludioPanel: React.FC = () => {
         params.append('cese', ceseStatus.toUpperCase());
         params.append('observacion', obsEdit.toUpperCase());
       }
-
       await fetch(INTERLUDIO_SHEETS_URL, { method: 'POST', mode: 'no-cors', body: params });
       alert('¡SINCRONIZACIÓN EXITOSA!');
       setSelectedExpediente(null);
       fetchAllData(true);
-    } catch (err) {
-      console.error(err);
-      alert('Error al sincronizar');
-    } finally {
-      setIsSavingExp(false);
-    }
+    } catch (err) { alert('Error al sincronizar'); } finally { setIsSavingExp(false); }
   };
 
   const handleFirmaChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -231,12 +241,14 @@ const InterludioPanel: React.FC = () => {
       let posibleCobro = firmaData.fecha_posible_cobro;
       if (value) {
         const parts = value.split('-');
-        const year = parseInt(parts[0]), month = parseInt(parts[1]) - 1, day = parseInt(parts[2]);
-        let targetMonth = day >= 6 ? month + 1 : month;
-        let targetYear = year;
-        if (targetMonth > 11) { targetMonth = 0; targetYear += 1; }
-        const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
-        posibleCobro = new Date(targetYear, targetMonth, Math.min(30, lastDay)).toISOString().split('T')[0];
+        if (parts.length === 3) {
+          const year = parseInt(parts[0]), month = parseInt(parts[1]) - 1, day = parseInt(parts[2]);
+          let targetMonth = day >= 6 ? month + 1 : month;
+          let targetYear = year;
+          if (targetMonth > 11) { targetMonth = 0; targetYear += 1; }
+          const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+          posibleCobro = new Date(targetYear, targetMonth, Math.min(30, lastDay)).toISOString().split('T')[0];
+        }
       }
       setFirmaData(prev => ({ ...prev, [name]: value, fecha_posible_cobro: posibleCobro }));
     } else {
@@ -252,6 +264,7 @@ const InterludioPanel: React.FC = () => {
       Object.entries(firmaData).forEach(([k, v]) => params.append(k, String(v).trim().toUpperCase()));
       await fetch(INTERLUDIO_SHEETS_URL, { method: 'POST', mode: 'no-cors', body: params });
       setFirmaData(initialFirmaState);
+      setAutoVerifyStatus(null);
       alert('¡FIRMA REGISTRADA CON ÉXITO!');
       setTimeout(() => fetchAllData(true), 1500);
     } catch (err) { alert('Error al registrar firma'); } finally { setLoading(false); }
@@ -259,10 +272,7 @@ const InterludioPanel: React.FC = () => {
 
   const handleMontoInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value.replace(/\D/g, "");
-    if (val === "") {
-      setPagoMonto("");
-      return;
-    }
+    if (val === "") { setPagoMonto(""); return; }
     const formatted = val.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
     setPagoMonto(formatted);
   };
@@ -330,17 +340,8 @@ const InterludioPanel: React.FC = () => {
                         const match = JSON.stringify(r).toLowerCase().includes(searchQuery.toLowerCase());
                         const cuotasPagadas = parseInt(getVal(r, 16).replace(/\D/g, '')) || 0;
                         const ceseSi = getVal(r, 15).toUpperCase() === 'SI';
-
-                        // FILTRO PARA COBRANZAS: SOLO CESES APLICADOS Y 0 CUOTAS PAGADAS
-                        if (activeInternalTab === 'Cobranzas') {
-                          return match && ceseSi && cuotasPagadas === 0;
-                        }
-                        
-                        // FILTRO PARA PAGADO: SOLO CLIENTES CON 1 O MÁS CUOTAS PAGADAS
-                        if (activeInternalTab === 'Pagado') {
-                          return match && cuotasPagadas > 0;
-                        }
-                        
+                        if (activeInternalTab === 'Cobranzas') return match && ceseSi && cuotasPagadas === 0;
+                        if (activeInternalTab === 'Pagado') return match && cuotasPagadas > 0;
                         return match;
                       })
                       .map((res, i) => (
@@ -388,10 +389,29 @@ const InterludioPanel: React.FC = () => {
         {activeInternalTab === 'Cargar Firmas' && (
           <div className="animate-in fade-in duration-500 space-y-12">
             <form onSubmit={handleGuardarFirma} className="space-y-12">
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">G.I / DOCUMENTO *</label>
-                  <input type="text" name="ci" value={firmaData.ci} onChange={handleFirmaChange} required className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white focus:border-[#f0b86a]/40 outline-none" />
+                  <div className="relative group">
+                    <input 
+                      type="text" 
+                      name="ci" 
+                      value={firmaData.ci} 
+                      onChange={handleFirmaChange} 
+                      onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAutoVerifyCI())}
+                      required 
+                      className={`w-full bg-[#0a0a0a] border rounded-lg py-3.5 pl-4 pr-12 text-sm text-white focus:border-[#f0b86a]/40 outline-none transition-all ${autoVerifyStatus === 'error' ? 'border-red-500/50' : autoVerifyStatus === 'success' ? 'border-green-500/50' : 'border-white/10'}`} 
+                    />
+                    <button 
+                      type="button"
+                      onClick={handleAutoVerifyCI}
+                      disabled={!firmaData.ci || isAutoVerifying}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-white/5 hover:bg-[#f0b86a]/20 rounded-md transition-all text-gray-500 hover:text-[#f0b86a] disabled:opacity-30"
+                    >
+                      {isAutoVerifying ? <Loader2 className="animate-spin" size={14} /> : <Scan size={14} />}
+                    </button>
+                  </div>
+                  {autoVerifyStatus === 'success' && <p className="text-[8px] font-black text-green-500 uppercase ml-1 animate-pulse flex items-center gap-1"><CheckCircle2 size={10}/> Datos estirados</p>}
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">NOMBRE CLIENTE *</label>
@@ -399,8 +419,18 @@ const InterludioPanel: React.FC = () => {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">FECHA NACIMIENTO</label>
-                  <input type="date" name="fecha_nacimiento" value={firmaData.fecha_nacimiento} onChange={handleFirmaChange} className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none" />
+                  <input 
+                    type="text" 
+                    name="fecha_nacimiento" 
+                    value={firmaData.fecha_nacimiento} 
+                    onChange={handleFirmaChange} 
+                    placeholder="DD/MM/AAAA"
+                    className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white focus:border-[#f0b86a]/40 outline-none transition-all" 
+                  />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">ASESOR RESPONSABLE *</label>
                   <select name="agente" value={firmaData.agente} onChange={handleFirmaChange} required className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none">
@@ -412,13 +442,13 @@ const InterludioPanel: React.FC = () => {
                   <label className="text-[10px] font-black text-gray-500 uppercase">INSTITUCIÓN *</label>
                   <input type="text" name="institucion" value={firmaData.institucion} onChange={handleFirmaChange} required className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white focus:border-[#f0b86a]/40 outline-none" />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">CIUDAD / LOCALIDAD *</label>
                   <input type="text" name="ciudad" value={firmaData.ciudad} onChange={handleFirmaChange} required className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white focus:border-[#f0b86a]/40 outline-none" />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">FECHA DE FIRMA *</label>
                   <input type="date" name="fecha_firma" value={firmaData.fecha_firma} onChange={handleFirmaChange} required className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none" />
@@ -428,19 +458,19 @@ const InterludioPanel: React.FC = () => {
                   <input type="date" name="diligencia" value={firmaData.diligencia} onChange={handleFirmaChange} className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-[#f0b86a] uppercase">SELECCIÓN DE PLAN DE CUOTAS *</label>
+                  <label className="text-[10px] font-black text-[#f0b86a] uppercase">SELECCIÓN DE PLAN *</label>
                   <select name="cuotas" value={firmaData.cuotas} onChange={handleFirmaChange} required className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none font-black uppercase">
                     <option value="">SELECCIONAR PLAN...</option>
                     {listaCuotas.map(n => <option key={n} value={n}>{n} CUOTA{Number(n) > 1 ? 'S' : ''}</option>)}
                   </select>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-[#f0b86a] uppercase">FECHA POSIBLE COBRO</label>
+                  <label className="text-[10px] font-black text-[#f0b86a] uppercase">POSIBLE COBRO</label>
                   <input type="date" name="fecha_posible_cobro" value={firmaData.fecha_posible_cobro} onChange={handleFirmaChange} className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none" />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">ESTADO DE FIRMA *</label>
                   <select name="firma" value={firmaData.firma} onChange={handleFirmaChange} required className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none">
@@ -458,6 +488,7 @@ const InterludioPanel: React.FC = () => {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">PROVEEDOR EXTERNO</label>
                   <select name="proveedor" value={firmaData.proveedor} onChange={handleFirmaChange} className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none">
+                    {/* Fixed typo: changed proveedoresPredefinidas to proveedoresPredefinidos */}
                     {proveedoresPredefinidos.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
@@ -466,31 +497,24 @@ const InterludioPanel: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
                 <div className="bg-[#050505] border border-white/5 rounded-2xl p-8 flex justify-between items-center group hover:border-[#f0b86a]/20 transition-all">
                   <div className="space-y-1">
-                    <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">MONTO DE CUOTA RESULTANTE</p>
-                    <p className="text-[11px] font-black text-[#f0b86a] uppercase">A PAGAR</p>
+                    <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">CUOTA MENSUAL</p>
+                    <p className="text-[11px] font-black text-[#f0b86a] uppercase">MONTO ESTIMADO</p>
                   </div>
-                  <p className="text-4xl font-black text-[#f0b86a] italic">
-                    {formatCurrency(firmaData.cuota_monto)}
-                  </p>
+                  <p className="text-4xl font-black text-[#f0b86a] italic">{formatCurrency(firmaData.cuota_monto)}</p>
                 </div>
                 <div className="bg-[#050505] border border-white/5 rounded-2xl p-8 flex justify-between items-center group hover:border-white/10 transition-all">
                   <div className="space-y-1">
-                    <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">MONTO TOTAL DE OPERACIÓN</p>
+                    <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest">TOTAL OPERACIÓN</p>
                     <p className="text-[11px] font-black text-white/40 uppercase">CAPITAL FINAL</p>
                   </div>
-                  <p className="text-4xl font-black text-white italic">
-                    {formatCurrency(firmaData.total)}
-                  </p>
+                  <p className="text-4xl font-black text-white italic">{formatCurrency(firmaData.total)}</p>
                 </div>
               </div>
 
               <div className="flex justify-end items-center gap-4 pt-4">
-                <button type="button" onClick={() => setFirmaData(initialFirmaState)} className="bg-[#0a0a0a] hover:bg-[#1a1a1a] text-white py-4 px-12 rounded-lg font-black text-sm transition-all border border-white/5 active:scale-95">
-                  Limpiar
-                </button>
+                <button type="button" onClick={() => { setFirmaData(initialFirmaState); setAutoVerifyStatus(null); }} className="bg-[#0a0a0a] hover:bg-[#1a1a1a] text-white py-4 px-12 rounded-lg font-black text-sm transition-all border border-white/5 active:scale-95">Limpiar</button>
                 <button type="submit" disabled={loading} className="bg-[#f0b86a] hover:bg-[#e0a85a] text-black py-4 px-12 rounded-lg font-black text-sm transition-all shadow-lg active:scale-95 disabled:opacity-50 flex items-center gap-3">
-                  {loading && <Loader2 className="animate-spin" size={16} />}
-                  Guardar Firma
+                  {loading && <Loader2 className="animate-spin" size={16} />} Guardar Firma
                 </button>
               </div>
             </form>
@@ -502,108 +526,69 @@ const InterludioPanel: React.FC = () => {
             <div className={`bg-[#050505] w-full ${(activeInternalTab === 'Cobranzas' || activeInternalTab === 'Pagado') ? 'max-w-2xl' : 'max-w-7xl'} rounded-[3rem] border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[98vh]`}>
               <div className="p-10 flex justify-between items-start border-b border-white/5">
                 <div>
-                  <h2 className="text-5xl font-black text-[#f0b86a] italic uppercase tracking-tighter leading-none drop-shadow-[0_0_15px_rgba(240,184,106,0.3)]">
-                    EXPEDIENTE
-                  </h2>
-                  <p className="text-[9px] font-black text-gray-600 uppercase tracking-[0.4em] mt-3">MODALIDAD DE GESTIÓN: {activeInternalTab.toUpperCase()}</p>
+                  <h2 className="text-5xl font-black text-[#f0b86a] italic uppercase tracking-tighter leading-none drop-shadow-[0_0_15px_rgba(240,184,106,0.3)]">EXPEDIENTE</h2>
+                  <p className="text-[9px] font-black text-gray-600 uppercase tracking-[0.4em] mt-3">MODALIDAD: {activeInternalTab.toUpperCase()}</p>
                 </div>
                 <button onClick={() => setSelectedExpediente(null)} className="w-14 h-14 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center transition-all text-white border border-white/10 shadow-xl"><X size={20} /></button>
               </div>
-              
               <div className="flex-1 overflow-y-auto p-10 space-y-12 custom-scrollbar">
                 {(activeInternalTab === 'Cobranzas' || activeInternalTab === 'Pagado') ? (
                   <div className="space-y-12 animate-in zoom-in-95">
-                    
                     <div className="bg-[#0a120d] p-10 rounded-[2.5rem] border border-green-500/10 shadow-2xl relative overflow-hidden group">
                        <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
-                       
                        <div className="flex items-center gap-4 mb-10 pb-6 border-b border-white/5">
                           <CreditCard className="text-[#10b981]" size={28} />
                           <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase">RESUMEN</h3>
                        </div>
-
                        <div className="space-y-10">
                           <div>
                              <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] mb-3">TOTAL</p>
-                             <p className="text-6xl font-black text-[#10b981] italic tracking-tighter drop-shadow-[0_0_20px_rgba(16,185,129,0.3)]">
-                               {formatCurrency(getVal(selectedExpediente, 9))}
-                             </p>
+                             <p className="text-6xl font-black text-[#10b981] italic tracking-tighter drop-shadow-[0_0_20px_rgba(16,185,129,0.3)]">{formatCurrency(getVal(selectedExpediente, 9))}</p>
                           </div>
-
                           <div className="grid grid-cols-2 gap-8">
                              <div>
                                 <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] mb-3">PLAN</p>
-                                <p className="text-3xl font-black text-white italic uppercase tracking-widest">
-                                   {getVal(selectedExpediente, 8)} CUOTAS
-                                </p>
+                                <p className="text-3xl font-black text-white italic uppercase tracking-widest">{getVal(selectedExpediente, 8)} CUOTAS</p>
                              </div>
-
                              <div>
                                 <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] mb-3">FALTANTE</p>
-                                <p className="text-3xl font-black text-red-500 italic uppercase tracking-widest drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]">
-                                   {formatCurrency(
-                                      Math.max(0, (parseInt(getVal(selectedExpediente, 9).replace(/\D/g, '')) || 0) - (parseInt(getVal(selectedExpediente, 17).replace(/\D/g, '')) || 0))
-                                   )}
-                                </p>
+                                <p className="text-3xl font-black text-red-500 italic uppercase tracking-widest drop-shadow-[0_0_15px_rgba(239,68,68,0.3)]">{formatCurrency(Math.max(0, (parseInt(getVal(selectedExpediente, 9).replace(/\D/g, '')) || 0) - (parseInt(getVal(selectedExpediente, 17).replace(/\D/g, '')) || 0)))}</p>
                              </div>
                           </div>
                        </div>
                     </div>
-
                     <div className="grid grid-cols-2 gap-6">
                       <div className="bg-white/5 p-8 rounded-3xl border border-white/5 space-y-3">
                           <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">CUOTAS PAGADAS</p>
                           <div className="flex items-center gap-4">
-                            <div className="p-3 bg-[#f0b86a]/10 rounded-xl">
-                              <History size={20} className="text-[#f0b86a]" />
-                            </div>
+                            <div className="p-3 bg-[#f0b86a]/10 rounded-xl"><History size={20} className="text-[#f0b86a]" /></div>
                             <p className="text-3xl font-black text-white">{getVal(selectedExpediente, 16) || '0'}</p>
                           </div>
                       </div>
                       <div className="bg-white/5 p-8 rounded-3xl border border-white/5 space-y-3">
                           <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">MONTO TOTAL COBRADO</p>
                           <div className="flex items-center gap-4">
-                            <div className="p-3 bg-green-500/10 rounded-xl">
-                              <Wallet size={20} className="text-green-500" />
-                            </div>
+                            <div className="p-3 bg-green-500/10 rounded-xl"><Wallet size={20} className="text-green-500" /></div>
                             <p className="text-2xl font-black text-white">{formatCurrency(getVal(selectedExpediente, 17))}</p>
                           </div>
                       </div>
                     </div>
-
                     <div className="bg-[#0a0a0a] p-10 rounded-[2.5rem] border border-white/5 space-y-10 shadow-inner">
                        <div className="space-y-4">
                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] ml-2">NUEVA CUOTA A REGISTRAR</label>
                          <div className="relative group">
-                            <select 
-                                value={pagoCuota} 
-                                onChange={(e) => setPagoCuota(e.target.value)} 
-                                className="w-full bg-black border border-white/10 rounded-2xl p-7 text-2xl font-black text-white uppercase outline-none appearance-none cursor-pointer focus:border-[#f0b86a]/40 shadow-inner"
-                            >
+                            <select value={pagoCuota} onChange={(e) => setPagoCuota(e.target.value)} className="w-full bg-black border border-white/10 rounded-2xl p-7 text-2xl font-black text-white uppercase outline-none appearance-none cursor-pointer focus:border-[#f0b86a]/40 shadow-inner">
                                 {[1, 2, 3, 4, 5, 6].map(num => <option key={num} value={String(num)}>{num} CUOTA</option>)}
                             </select>
                             <ChevronDown size={24} className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-700 pointer-events-none" />
                          </div>
                        </div>
-                       
                        <div className="space-y-4">
                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.3em] ml-2">NUEVO MONTO A COBRAR (GS)</label>
-                         <input 
-                            type="text" 
-                            value={pagoMonto} 
-                            onChange={handleMontoInput} 
-                            placeholder="0"
-                            className="w-full bg-black border border-white/10 rounded-2xl py-7 px-8 text-3xl font-black text-white outline-none focus:border-[#10b981]/40 shadow-inner" 
-                         />
+                         <input type="text" value={pagoMonto} onChange={handleMontoInput} placeholder="0" className="w-full bg-black border border-white/10 rounded-2xl py-7 px-8 text-3xl font-black text-white outline-none focus:border-[#10b981]/40 shadow-inner" />
                        </div>
-
-                       <button 
-                         onClick={handleGuardarExpediente} 
-                         disabled={isSavingExp || !pagoMonto}
-                         className="w-full bg-[#10b981] hover:bg-[#0ea876] text-white py-9 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.3em] shadow-[0_0_30px_rgba(16,185,129,0.2)] flex items-center justify-center gap-4 transition-all active:scale-[0.98] disabled:opacity-20"
-                       >
-                         {isSavingExp ? <Loader2 className="animate-spin" /> : <ArrowRightCircle size={24} />} 
-                         REGISTRAR Y SUMAR COBRO
+                       <button onClick={handleGuardarExpediente} disabled={isSavingExp || !pagoMonto} className="w-full bg-[#10b981] hover:bg-[#0ea876] text-white py-9 rounded-[2.5rem] font-black text-sm uppercase tracking-[0.3em] shadow-[0_0_30px_rgba(16,185,129,0.2)] flex items-center justify-center gap-4 transition-all active:scale-[0.98] disabled:opacity-20">
+                         {isSavingExp ? <Loader2 className="animate-spin" /> : <ArrowRightCircle size={24} />} REGISTRAR Y SUMAR COBRO
                        </button>
                     </div>
                   </div>
@@ -625,7 +610,6 @@ const InterludioPanel: React.FC = () => {
                         <p className="text-4xl font-black text-green-500 italic drop-shadow-[0_0_10px_rgba(34,197,94,0.3)]">{formatCurrency(getVal(selectedExpediente, 9))}</p>
                       </div>
                     </div>
-                    
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                       <div className="space-y-6">
                         <div className="flex items-center gap-4 text-[#f0b86a]"><ShieldCheck size={24} /><h4 className="text-xl font-black uppercase italic tracking-tighter">Estado de Cese</h4></div>
@@ -638,13 +622,11 @@ const InterludioPanel: React.FC = () => {
                             <ChevronDown size={24} className="absolute right-8 top-1/2 -translate-y-1/2 text-gray-700 pointer-events-none" />
                         </div>
                       </div>
-                      
                       <div className="space-y-6">
                         <div className="flex items-center gap-4 text-[#f0b86a]"><MessageSquare size={24} /><h4 className="text-xl font-black uppercase italic tracking-tighter">Observación Maestro</h4></div>
                         <textarea value={obsEdit} onChange={(e) => setObsEdit(e.target.value)} placeholder="Añadir notas del expediente..." className="w-full bg-black/60 rounded-[1.5rem] border border-white/10 p-7 min-h-[150px] text-lg font-bold text-white uppercase italic tracking-tighter outline-none focus:border-[#f0b86a] shadow-inner" />
                       </div>
                     </div>
-
                     <button onClick={handleGuardarExpediente} disabled={isSavingExp} className="w-full bg-[#f0b86a] hover:bg-[#e0a85a] text-black py-10 rounded-[2.5rem] font-black uppercase tracking-[0.5em] shadow-2xl flex items-center justify-center gap-5 transition-all active:scale-[0.98]">
                       {isSavingExp ? <Loader2 className="animate-spin" /> : <Save size={24} />} SINCRONIZAR EXPEDIENTE MAESTRO
                     </button>
