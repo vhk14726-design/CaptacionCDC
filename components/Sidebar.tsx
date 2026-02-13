@@ -9,7 +9,8 @@ import {
   PlusCircle,
   FileDown,
   Layers,
-  LayoutDashboard
+  LayoutDashboard,
+  Contact
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -34,6 +35,7 @@ const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, onLogout, us
     { name: 'Interludio', icon: <Layers size={18} />, category: 'Admin', show: isAdmin },
     { name: 'Campañas', icon: <Target size={18} />, category: 'Ads', show: true },
     { name: 'Reportes', icon: <BarChart3 size={18} />, category: 'Intelligence', show: true },
+    { name: 'Clientes', icon: <Contact size={18} />, category: 'Admin', show: isAdmin },
   ];
 
   const Logo = () => (

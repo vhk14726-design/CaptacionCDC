@@ -95,11 +95,16 @@ const DashboardInterludio: React.FC = () => {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 9000); // 9s timeout para evitar el 10s de la plataforma
+
     try {
       const [resFirmas, resCobranzas] = await Promise.all([
-        fetch(`${INTERLUDIO_SHEETS_URL}?t=${Date.now()}`),
-        fetch(`${COBRANZAS_SHEETS_URL}?t=${Date.now()}`)
+        fetch(`${INTERLUDIO_SHEETS_URL}?t=${Date.now()}`, { signal: controller.signal }),
+        fetch(`${COBRANZAS_SHEETS_URL}?t=${Date.now()}`, { signal: controller.signal })
       ]);
+
+      clearTimeout(timeoutId);
 
       let consolidated: UnifiedRecord[] = [];
 
@@ -148,8 +153,12 @@ const DashboardInterludio: React.FC = () => {
       }
 
       setUnifiedData(consolidated);
-    } catch (err) {
-      console.error("Error Dashboard Interludio Sync:", err);
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.warn("Dashboard Interludio: La petición excedió el tiempo límite (9s)");
+      } else {
+        console.error("Error Dashboard Interludio Sync:", err);
+      }
     } finally {
       setLoading(false);
     }
@@ -292,7 +301,6 @@ const DashboardInterludio: React.FC = () => {
         </div>
       </div>
 
-      {/* BARRA DE FILTROS */}
       <div className="bg-[#121212] p-8 rounded-[2rem] border border-white/5 shadow-2xl flex flex-wrap items-end gap-6">
         <div className="flex-1 min-w-[200px] space-y-2">
           <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">AGENTE</label>
@@ -362,7 +370,6 @@ const DashboardInterludio: React.FC = () => {
         </button>
       </div>
 
-      {/* KPI CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
         <div className="bg-[#121212] p-10 rounded-[2.5rem] border border-white/5 shadow-xl group hover:border-white/10 transition-all">
           <p className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-4">TOTAL CLIENTES</p>
@@ -393,10 +400,8 @@ const DashboardInterludio: React.FC = () => {
         </div>
       </div>
 
-      {/* CHARTS GRID - 3 COLUMNS */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* POR AGENTE */}
         <div className="bg-[#121212] p-10 rounded-[2.5rem] border border-white/5 shadow-xl h-[500px] flex flex-col">
           <h3 className="text-xl font-black text-white uppercase italic mb-8 flex items-center gap-4">
             <BarChart3 className="text-[#f0b86a]" size={20} /> POR AGENTE
@@ -418,7 +423,6 @@ const DashboardInterludio: React.FC = () => {
           </div>
         </div>
 
-        {/* POR CIUDAD */}
         <div className="bg-[#121212] p-10 rounded-[2.5rem] border border-white/5 shadow-xl h-[500px] flex flex-col">
           <h3 className="text-xl font-black text-white uppercase italic mb-8 flex items-center gap-4">
             <BarChart3 className="text-white" size={20} /> POR CIUDAD
@@ -440,7 +444,6 @@ const DashboardInterludio: React.FC = () => {
           </div>
         </div>
 
-        {/* POR INSTITUCIÓN */}
         <div className="bg-[#121212] p-10 rounded-[2.5rem] border border-white/5 shadow-xl h-[500px] flex flex-col">
           <h3 className="text-xl font-black text-white uppercase italic mb-8 flex items-center gap-4">
             <PieChartIcon className="text-[#f0b86a]" size={20} /> POR INSTITUCIÓN
@@ -466,7 +469,6 @@ const DashboardInterludio: React.FC = () => {
               </PieChart>
             </ResponsiveContainer>
           </div>
-          {/* LEYENDA PERSONALIZADA AL PIE */}
           <div className="mt-8 flex flex-wrap justify-center gap-x-6 gap-y-3 pb-2">
             {metrics.chartInst.map((item, i) => (
               <div key={i} className="flex items-center gap-2 transition-opacity hover:opacity-100">
@@ -477,7 +479,6 @@ const DashboardInterludio: React.FC = () => {
           </div>
         </div>
 
-        {/* ESTADO CESE */}
         <div className="bg-[#121212] p-10 rounded-[2.5rem] border border-white/5 shadow-xl h-[500px] flex flex-col">
           <h3 className="text-xl font-black text-white uppercase italic mb-8 flex items-center gap-4">
             <PieChartIcon className="text-red-500" size={20} /> ESTADO CESE
@@ -498,7 +499,6 @@ const DashboardInterludio: React.FC = () => {
           </div>
         </div>
 
-        {/* ACTIVIDAD DIARIA */}
         <div className="bg-[#121212] p-10 rounded-[2.5rem] border border-white/5 shadow-xl h-[500px] flex flex-col">
           <h3 className="text-xl font-black text-white uppercase italic mb-8 flex items-center gap-4">
             <Activity className="text-[#f0b86a]" size={20} /> ACTIVIDAD DIARIA
@@ -522,7 +522,6 @@ const DashboardInterludio: React.FC = () => {
           </div>
         </div>
 
-        {/* TOTAL COBRADO VS PENDIENTE */}
         <div className="bg-[#121212] p-10 rounded-[2.5rem] border border-white/5 shadow-xl h-[500px] flex flex-col">
           <h3 className="text-xl font-black text-white uppercase italic mb-8 flex items-center gap-4">
             <PieChartIcon className="text-green-500" size={20} /> COBRADO VS PENDIENTE
@@ -546,7 +545,6 @@ const DashboardInterludio: React.FC = () => {
               <span className="text-lg font-black text-white">{((metrics.chartCobrado[0].value / (metrics.totalGeneral || 1)) * 100).toFixed(1)}%</span>
             </div>
           </div>
-          {/* LEYENDA DETALLE PENDIENTE */}
           <div className="mt-4 text-center">
             <p className="text-[10px] font-black text-gray-700 uppercase tracking-widest">
               Pendiente de Cobro : {formatCurrency(metrics.chartCobrado[1].value)}

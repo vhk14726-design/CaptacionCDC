@@ -9,6 +9,7 @@ import CargarPanel from './components/CargarPanel.tsx';
 import ExcelImportPanel from './components/ExcelImportPanel.tsx';
 import InterludioPanel from './components/InterludioPanel.tsx';
 import DashboardInterludio from './components/DashboardInterludio.tsx';
+import ClientesPanel from './components/ClientesPanel.tsx';
 import LoginGate from './components/LoginGate.tsx';
 import { ShieldCheck, AlertCircle, Lock, LayoutDashboard } from 'lucide-react';
 
@@ -65,6 +66,8 @@ const App: React.FC = () => {
         return <CampaignsPanel token={metaToken} />;
       case 'Reportes':
         return <ReportsCenter token={metaToken} />;
+      case 'Clientes':
+        return userRole === 'admin' ? <ClientesPanel /> : <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
       default:
         return <MainDashboard isDarkMode={isDarkMode} token={metaToken} />;
     }
