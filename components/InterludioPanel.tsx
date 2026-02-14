@@ -129,7 +129,7 @@ const InterludioPanel: React.FC = () => {
     } catch (e) { return String(val); }
   };
 
-  const formatCurrency = (val: number | string) => {
+  const formatCurrency = (val: any) => {
     const num = parseInt(String(val).replace(/[^0-9]/g, ''));
     if (isNaN(num) || num === 0) return 'Gs. 0';
     return new Intl.NumberFormat('es-PY', { style: 'currency', currency: 'PYG', minimumFractionDigits: 0 }).format(num).replace('PYG', 'Gs.');
@@ -140,7 +140,7 @@ const InterludioPanel: React.FC = () => {
     try {
       const response = await fetch(`${INTERLUDIO_SHEETS_URL}?t=${Date.now()}`);
       if (response.ok) {
-        const json = await response.json();
+        const json = await response.ok ? await response.json() : [];
         const data = Array.isArray(json) ? json : (json.data || []);
         const clean = data.filter((r: any) => {
           const ci = getVal(r, 0);
@@ -172,11 +172,18 @@ const InterludioPanel: React.FC = () => {
       const j = await r.json();
       if (!j.ok) throw new Error(j.mensaje);
 
-      // Estirar datos al formulario: Nombres + Apellidos y Fecha (como texto DD/MM/AAAA)
+      // Formatear fecha para el input date (DD/MM/YYYY -> YYYY-MM-DD)
+      let formattedDate = "";
+      if (j.result.fecha_nacimiento && j.result.fecha_nacimiento.includes('/')) {
+        const [d, m, y] = j.result.fecha_nacimiento.split('/');
+        formattedDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      }
+
+      // Estirar datos al formulario: Nombres + Apellidos y Fecha
       setFirmaData(prev => ({
         ...prev,
         nombre_cliente: `${j.result.nombres} ${j.result.apellidos}`.toUpperCase(),
-        fecha_nacimiento: j.result.fecha_nacimiento // Se carga directamente el formato de la página
+        fecha_nacimiento: formattedDate
       }));
       setAutoVerifyStatus('success');
     } catch (err) {
@@ -241,14 +248,12 @@ const InterludioPanel: React.FC = () => {
       let posibleCobro = firmaData.fecha_posible_cobro;
       if (value) {
         const parts = value.split('-');
-        if (parts.length === 3) {
-          const year = parseInt(parts[0]), month = parseInt(parts[1]) - 1, day = parseInt(parts[2]);
-          let targetMonth = day >= 6 ? month + 1 : month;
-          let targetYear = year;
-          if (targetMonth > 11) { targetMonth = 0; targetYear += 1; }
-          const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
-          posibleCobro = new Date(targetYear, targetMonth, Math.min(30, lastDay)).toISOString().split('T')[0];
-        }
+        const year = parseInt(parts[0]), month = parseInt(parts[1]) - 1, day = parseInt(parts[2]);
+        let targetMonth = day >= 6 ? month + 1 : month;
+        let targetYear = year;
+        if (targetMonth > 11) { targetMonth = 0; targetYear += 1; }
+        const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+        posibleCobro = new Date(targetYear, targetMonth, Math.min(30, lastDay)).toISOString().split('T')[0];
       }
       setFirmaData(prev => ({ ...prev, [name]: value, fecha_posible_cobro: posibleCobro }));
     } else {
@@ -419,14 +424,7 @@ const InterludioPanel: React.FC = () => {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">FECHA NACIMIENTO</label>
-                  <input 
-                    type="text" 
-                    name="fecha_nacimiento" 
-                    value={firmaData.fecha_nacimiento} 
-                    onChange={handleFirmaChange} 
-                    placeholder="DD/MM/AAAA"
-                    className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white focus:border-[#f0b86a]/40 outline-none transition-all" 
-                  />
+                  <input type="date" name="fecha_nacimiento" value={firmaData.fecha_nacimiento} onChange={handleFirmaChange} className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none" />
                 </div>
               </div>
 
@@ -488,7 +486,6 @@ const InterludioPanel: React.FC = () => {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">PROVEEDOR EXTERNO</label>
                   <select name="proveedor" value={firmaData.proveedor} onChange={handleFirmaChange} className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none">
-                    {/* Fixed typo: changed proveedoresPredefinidas to proveedoresPredefinidos */}
                     {proveedoresPredefinidos.map(p => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
