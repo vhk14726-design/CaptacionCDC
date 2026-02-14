@@ -8,7 +8,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { cedula } = req.body;
     // Nueva URL base proporcionada por el usuario
-    let VERIFY_URL = "https://app.gfv.com.py/Q2t3YlhZdXBrdUtoODZQTHpyK1VaMGs4ODVaRTdHaVdiaGRwSzdsSnZSbThpT3FVWWphWnloM2V5Nzlvb294ZUlpT3U0ZldBb1hEMzdMUUo4SkdjSlE9PTo65LZXzOstLHkCbEU5NixfFA/";
+    let VERIFY_URL = "https://app.gfv.com.py/VytOMzBmZmJpVkUrcXpVa3h3WER3SGRpcVJvc0kyZVRsZktpazM5Z1ErSUNicG5pQnlvODQyQmNQMStuS1FhUENKaXgrMHY5MUxXU2hyaEJZbW0ycFE9PTo6eLbebF7x20KDewDz9wxoVg/";
     const SESSION_COOKIE = process.env.GFV_COOKIE || "";
 
     if (!cedula) return res.status(400).json({ ok: false, mensaje: "Cédula requerida" });
