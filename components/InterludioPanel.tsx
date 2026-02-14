@@ -140,7 +140,7 @@ const InterludioPanel: React.FC = () => {
     try {
       const response = await fetch(`${INTERLUDIO_SHEETS_URL}?t=${Date.now()}`);
       if (response.ok) {
-        const json = await response.ok ? await response.json() : [];
+        const json = await response.json();
         const data = Array.isArray(json) ? json : (json.data || []);
         const clean = data.filter((r: any) => {
           const ci = getVal(r, 0);
@@ -172,18 +172,11 @@ const InterludioPanel: React.FC = () => {
       const j = await r.json();
       if (!j.ok) throw new Error(j.mensaje);
 
-      // Formatear fecha para el input date (DD/MM/YYYY -> YYYY-MM-DD)
-      let formattedDate = "";
-      if (j.result.fecha_nacimiento && j.result.fecha_nacimiento.includes('/')) {
-        const [d, m, y] = j.result.fecha_nacimiento.split('/');
-        formattedDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-      }
-
-      // Estirar datos al formulario: Nombres + Apellidos y Fecha
+      // Estirar datos al formulario: Nombres + Apellidos y Fecha (como texto DD/MM/AAAA)
       setFirmaData(prev => ({
         ...prev,
         nombre_cliente: `${j.result.nombres} ${j.result.apellidos}`.toUpperCase(),
-        fecha_nacimiento: formattedDate
+        fecha_nacimiento: j.result.fecha_nacimiento // Se carga el texto directo "DD/MM/AAAA"
       }));
       setAutoVerifyStatus('success');
     } catch (err) {
@@ -424,7 +417,14 @@ const InterludioPanel: React.FC = () => {
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-gray-500 uppercase">FECHA NACIMIENTO</label>
-                  <input type="date" name="fecha_nacimiento" value={firmaData.fecha_nacimiento} onChange={handleFirmaChange} className="w-full bg-[#0a0a0a] border border-white/10 rounded-lg py-3.5 px-4 text-sm text-white outline-none" />
+                  <input 
+                    type="text" 
+                    name="fecha_nacimiento" 
+                    value={firmaData.fecha_nacimiento} 
+                    readOnly
+                    placeholder=""
+                    className="w-full bg-[#050505] border border-white/5 rounded-lg py-3.5 px-4 text-sm text-gray-400 outline-none cursor-not-allowed transition-all" 
+                  />
                 </div>
               </div>
 
